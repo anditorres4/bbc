@@ -1,5 +1,0 @@
-[build]
-buildCommand = "pnpm --filter api build"
-
-[deploy]
-startCommand = "node apps/api/dist/index.js"

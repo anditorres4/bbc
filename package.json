@@ -9,7 +9,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "db:migrate": "pnpm --filter api prisma migrate dev",
     "db:studio": "pnpm --filter api prisma studio",
-    "db:generate": "pnpm --filter api prisma generate"
+    "db:generate": "pnpm --filter api prisma generate",
+    "start": "node apps/api/dist/index.js"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
