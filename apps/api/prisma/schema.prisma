@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum BarrelStatus {
+  EN_BODEGA
+  EN_ALISTAMIENTO
+  EN_TRANSPORTE
+  ENTREGADO
+  EN_RECOGIDA
+  DEVUELTO
+  EN_MANTENIMIENTO
+  BAJA
+}
+
+// Tipos de evento que generan la "hoja de vida" del barril (append-only)
+enum EventType {
+  REGISTRO
+  ALISTAMIENTO
+  SALIDA_BODEGA
+  LLEGADA_PUNTO
+  ENTREGA_LLENO
+  RECOGIDA_VACIO
+  RETORNO_BODEGA
+  ENVIO_MANTENIMIENTO
+  RETORNO_MANTENIMIENTO
+  DISPOSICION_FINAL
+  NOVEDAD
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  OPERARIO_BODEGA
+  TRANSPORTISTA
+}
+
+enum RouteStatus {
+  PLANIFICADA
+  EN_CURSO
+  COMPLETADA
+  CON_NOVEDAD
+  CANCELADA
+}
+
+enum StopStatus {
+  PENDIENTE
+  COMPLETADA
+  CON_NOVEDAD
+  CANCELADA
+}
+
+enum BarrelStopStatus {
+  ASIGNADO
+  ENTREGADO
+  RECOGIDO_VACIO
+  NOVEDAD
+}
+
+enum AlertType {
+  SIN_MOVIMIENTO_60_DIAS
+  NOVEDAD_EN_RUTA
+  BARRIL_PROXIMO_MANTENIMIENTO
+  BARRIL_FIN_VIDA_UTIL
+  RUTA_SIN_CERRAR
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role     @default(OPERARIO_BODEGA)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdBarrels Barrel[]        @relation("BarrelCreatedBy")
+  events         BarrelEvent[]
+  routes         Route[]         @relation("RouteTransportist")
+  alertsRead     Alert[]         @relation("AlertReadBy")
+  refreshTokens  RefreshToken[]
+}
+
+// Tokens de refresco: se almacenan en DB para poder invalidarlos en logout
+model RefreshToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// El ID se genera automáticamente con formato BBC-001, BBC-002...
+// La secuencia barrel_id_seq se crea en la migración inicial
+model Barrel {
+  id                  String       @id @default(dbgenerated("'BBC-' || lpad(nextval('barrel_id_seq'::regclass)::text, 3, '0')"))
+  qrCode              String       @unique
+  status              BarrelStatus @default(EN_BODEGA)
+  capacity            Int
+  manufactureDate     DateTime
+  lastMaintenanceDate DateTime?
+  maxLifeYears        Int          @default(10)
+  product             String?
+  notes               String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  createdById         String
+
+  createdBy        User              @relation("BarrelCreatedBy", fields: [createdById], references: [id])
+  events           BarrelEvent[]
+  routeStopBarrels RouteStopBarrel[]
+  alerts           Alert[]
+}
+
+// Hoja de vida del barril: NUNCA se borra ni modifica — solo INSERT
+model BarrelEvent {
+  id              String        @id @default(cuid())
+  barrelId        String
+  type            EventType
+  fromStatus      BarrelStatus?
+  toStatus        BarrelStatus
+  userId          String
+  routeId         String?
+  deliveryPointId String?
+  lat             Float?
+  lng             Float?
+  notes           String?
+  timestamp       DateTime      @default(now())
+
+  barrel        Barrel         @relation(fields: [barrelId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+  route         Route?         @relation(fields: [routeId], references: [id])
+  deliveryPoint DeliveryPoint? @relation(fields: [deliveryPointId], references: [id])
+
+  @@index([barrelId, timestamp])
+  @@index([timestamp])
+}
+
+model DeliveryPoint {
+  id          String   @id @default(cuid())
+  name        String
+  address     String
+  lat         Float?
+  lng         Float?
+  phone       String?
+  contactName String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  routeStops RouteStop[]
+  events     BarrelEvent[]
+}
+
+model Route {
+  id             String      @id @default(cuid())
+  name           String
+  date           DateTime
+  status         RouteStatus @default(PLANIFICADA)
+  transportistId String
+  vehiclePlate   String?
+  departedAt     DateTime?
+  arrivedAt      DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  transportist User        @relation("RouteTransportist", fields: [transportistId], references: [id])
+  stops        RouteStop[]
+  events       BarrelEvent[]
+  alerts       Alert[]
+}
+
+model RouteStop {
+  id               String     @id @default(cuid())
+  routeId          String
+  deliveryPointId  String
+  position         Int
+  status           StopStatus @default(PENDIENTE)
+  barrelsAssigned  Int
+  barrelsDelivered Int        @default(0)
+  barrelsPickedUp  Int        @default(0)
+  deliveredAt      DateTime?
+  lat              Float?
+  lng              Float?
+
+  route         Route            @relation(fields: [routeId], references: [id])
+  deliveryPoint DeliveryPoint    @relation(fields: [deliveryPointId], references: [id])
+  barrels       RouteStopBarrel[]
+  alerts        Alert[]
+
+  @@unique([routeId, position])
+}
+
+model RouteStopBarrel {
+  id              String           @id @default(cuid())
+  routeStopId     String
+  barrelId        String
+  product         String
+  status          BarrelStopStatus @default(ASIGNADO)
+  deliveredAt     DateTime?
+  pickedUpEmptyAt DateTime?
+
+  routeStop RouteStop @relation(fields: [routeStopId], references: [id])
+  barrel    Barrel    @relation(fields: [barrelId], references: [id])
+
+  @@unique([routeStopId, barrelId])
+}
+
+model Alert {
+  id          String        @id @default(cuid())
+  type        AlertType
+  barrelId    String?
+  routeId     String?
+  routeStopId String?
+  message     String
+  severity    AlertSeverity
+  isRead      Boolean       @default(false)
+  readById    String?
+  readAt      DateTime?
+  targetRoles Role[]
+  createdAt   DateTime      @default(now())
+
+  barrel    Barrel?    @relation(fields: [barrelId], references: [id])
+  route     Route?     @relation(fields: [routeId], references: [id])
+  routeStop RouteStop? @relation(fields: [routeStopId], references: [id])
+  readBy    User?      @relation("AlertReadBy", fields: [readById], references: [id])
+}

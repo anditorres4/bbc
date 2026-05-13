@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "BBC Barrel Track",
+    "slug": "bbc-barrel-track",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1A1612"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.bbc.barreltrack",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Permite escanear códigos QR de barriles"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1A1612"
+      },
+      "package": "com.bbc.barreltrack",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      "expo-router",
+      ["expo-camera", { "cameraPermission": "Permite escanear códigos QR de barriles" }]
+    ],
+    "scheme": "bbc-barrel-track",
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

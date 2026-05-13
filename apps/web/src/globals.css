@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 250 250 248;
+    --foreground: 28 25 23;
+    --muted: 245 245 244;
+    --muted-foreground: 120 113 108;
+    --border: 231 229 228;
+    --ring: 217 119 6;
+    --radius: 0.5rem;
+  }
+
+  body {
+    @apply bg-[#FAFAF8] text-[#1C1917] antialiased;
+  }
+
+  * {
+    @apply border-[#E7E5E4];
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d6d3d1 transparent;
+  }
+}
