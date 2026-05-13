@@ -23,6 +23,7 @@
     "expo-barcode-scanner": "~13.0.1",
     "expo-camera": "~15.0.16",
     "expo-haptics": "^55.0.14",
+    "expo-location": "~17.0.1",
     "expo-router": "~3.5.23",
     "expo-secure-store": "~13.0.2",
     "expo-status-bar": "~1.12.1",

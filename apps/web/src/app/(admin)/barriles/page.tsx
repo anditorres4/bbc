@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, X } from 'lucide-react'
+import { Plus, QrCode, Search, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { api } from '@/lib/api'
 import { DataTable } from '@/components/DataTable'
@@ -34,6 +34,7 @@ export default function BarrilesPage() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<string>('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [scanOpen, setScanOpen] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -98,10 +99,21 @@ export default function BarrilesPage() {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => setScanOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Nuevo Barril
-        </Button>
+        <div className="flex gap-2">
+          {selected.size > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/barriles/etiquetas?ids=${[...selected].join(',')}`)}
+            >
+              <QrCode className="h-4 w-4" />
+              Generar etiquetas ({selected.size})
+            </Button>
+          )}
+          <Button onClick={() => setScanOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Nuevo Barril
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -112,6 +124,28 @@ export default function BarrilesPage() {
         onRowClick={row => router.push(`/barriles/${row.id}`)}
         emptyMessage="No hay barriles con los filtros seleccionados"
         columns={[
+          {
+            key: 'select',
+            header: '',
+            className: 'w-10',
+            render: (row) => (
+              <input
+                type="checkbox"
+                checked={selected.has(row.id as string)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => {
+                  const rowId = row.id as string
+                  setSelected(prev => {
+                    const next = new Set(prev)
+                    if (next.has(rowId)) next.delete(rowId)
+                    else next.add(rowId)
+                    return next
+                  })
+                }}
+                className="h-4 w-4 cursor-pointer accent-amber-600"
+              />
+            ),
+          },
           { key: 'id', header: 'ID', sortable: true },
           { key: 'qrCode', header: 'Código QR' },
           {

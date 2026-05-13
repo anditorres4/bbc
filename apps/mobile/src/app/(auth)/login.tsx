@@ -7,9 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Beer } from 'lucide-react-native'
 import { api } from '@/lib/api'
-import { setTokens, storeUser } from '@/lib/auth'
+import { setTokens, storeUser, clearTokens } from '@/lib/auth'
 import { theme, spacing, radius } from '@/lib/theme'
-import type { AuthResponse } from '@/lib/types'
+import type { AuthResponse, Role } from '@/lib/types'
 
 export default function LoginScreen() {
   const router = useRouter()
@@ -29,7 +29,15 @@ export default function LoginScreen() {
       const res = await api.post<AuthResponse>('/auth/login', { email, password })
       await setTokens(res.accessToken, res.refreshToken)
       await storeUser(res.user)
-      router.replace('/(bodega)')
+      const role: Role = res.user.role
+      if (role === 'OPERARIO_BODEGA') {
+        router.replace('/(bodega)')
+      } else if (role === 'TRANSPORTISTA') {
+        router.replace('/(transportista)')
+      } else {
+        setError('Este rol solo puede acceder desde la versión web')
+        await clearTokens()
+      }
     } catch (err: unknown) {
       const e = err as { message?: string }
       setError(e?.message ?? 'Error al iniciar sesión')
@@ -49,7 +57,7 @@ export default function LoginScreen() {
             <Beer size={36} color="#fff" />
           </View>
           <Text style={styles.title}>BBC Barrel Track</Text>
-          <Text style={styles.subtitle}>Operario de Bodega</Text>
+          <Text style={styles.subtitle}>Operario · Transportista</Text>
         </View>
 
         <View style={styles.form}>

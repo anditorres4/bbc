@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import { getAccessToken } from '@/lib/auth'
+import { getAccessToken, getStoredUser } from '@/lib/auth'
 import { theme } from '@/lib/theme'
+import type { User } from '@/lib/types'
 
 export default function RootLayout() {
   const router = useRouter()
@@ -15,7 +16,12 @@ export default function RootLayout() {
       if (!token && !inAuth) {
         router.replace('/(auth)/login')
       } else if (token && inAuth) {
-        router.replace('/(bodega)')
+        const user = await getStoredUser<User>()
+        if (user?.role === 'TRANSPORTISTA') {
+          router.replace('/(transportista)')
+        } else {
+          router.replace('/(bodega)')
+        }
       }
     }
     checkAuth()

@@ -1,5 +1,5 @@
-import QRCode from 'qrcode'
 import { BarrelStatus, EventType } from '@prisma/client'
+import { generateQRBase64 } from '../utils/qr'
 import { prisma } from '../db/client'
 import { AppError } from '../common/errors'
 import { assertTransition } from '../services/barrelStateMachine'
@@ -153,10 +153,10 @@ export async function recibirBarril(id: string, userId: string, notes?: string) 
 
 export async function getBarrelQr(id: string) {
   const barrel = await findBarrelOrFail(id)
-  const png = await QRCode.toBuffer(barrel.qrCode, { type: 'png', width: 300 })
+  const base64 = await generateQRBase64(barrel.id)
   return {
     id: barrel.id,
     qrCode: barrel.qrCode,
-    qrImage: `data:image/png;base64,${png.toString('base64')}`,
+    qrImage: `data:image/png;base64,${base64}`,
   }
 }

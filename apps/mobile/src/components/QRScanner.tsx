@@ -14,8 +14,15 @@ import type { BarrelScanResult } from '@/lib/types'
 const SCAN_WINDOW = 260
 const SHEET_HEIGHT = 320
 const COOLDOWN_MS = 2000
+const BBC_QR_RE = /^BBC-\d{3,5}$/
 
-export type ScannerContext = 'alistamiento' | 'recepcion' | 'nuevo' | 'informativo'
+export type ScannerContext =
+  | 'alistamiento'
+  | 'recepcion'
+  | 'nuevo'
+  | 'informativo'
+  | 'entrega'
+  | 'recogida_vacio'
 
 interface Props {
   context: ScannerContext
@@ -97,13 +104,23 @@ export function QRScanner({ context, onResult, onClose }: Props) {
     const now = Date.now()
     if (now - lastScanRef.current < COOLDOWN_MS) return
     lastScanRef.current = now
+    if (!BBC_QR_RE.test(data)) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      setError('QR no reconocido — solo se aceptan barriles BBC')
+      return
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
     processQrCode(data)
   }
 
   function handleWebSearch() {
-    if (!webInput.trim()) return
-    processQrCode(webInput.trim())
+    const trimmed = webInput.trim()
+    if (!trimmed) return
+    if (!BBC_QR_RE.test(trimmed)) {
+      setError('QR no reconocido — solo se aceptan barriles BBC')
+      return
+    }
+    processQrCode(trimmed)
   }
 
   function handleAction(action: string) {
@@ -127,6 +144,16 @@ export function QRScanner({ context, onResult, onClose }: Props) {
       ? [
           { label: 'Ver detalle', action: 'detail', primary: true },
           { label: 'Cerrar', action: 'cancel' },
+        ]
+      : context === 'entrega'
+      ? [
+          { label: 'Confirmar entrega', action: 'entregar', primary: true },
+          { label: 'Cancelar', action: 'cancel' },
+        ]
+      : context === 'recogida_vacio'
+      ? [
+          { label: 'Confirmar recogida', action: 'recoger', primary: true },
+          { label: 'Cancelar', action: 'cancel' },
         ]
       : [{ label: 'Cerrar', action: 'cancel' }]
 

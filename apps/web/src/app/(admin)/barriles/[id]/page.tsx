@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatDate } from '@/lib/utils'
-import type { BarrelDetail, QrResponse } from '@/lib/types'
+import type { BarrelDetail } from '@/lib/types'
 
 type ActionType = 'mantenimiento' | 'retorno' | 'baja' | 'recibir' | null
 
@@ -33,12 +33,6 @@ export default function BarrilDetailPage() {
   const { data: barrel, isLoading } = useQuery({
     queryKey: ['barrel', id],
     queryFn: () => api.get<{ data: BarrelDetail }>(`/api/barriles/${id}`).then(r => r.data),
-  })
-
-  const { data: qrData } = useQuery({
-    queryKey: ['barrel-qr', id],
-    queryFn: () => api.get<QrResponse>(`/api/barriles/${id}/qr`),
-    enabled: !!barrel,
   })
 
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<{
@@ -180,7 +174,11 @@ export default function BarrilDetailPage() {
           )}
 
           {/* QR */}
-          {qrData && <QRDisplay data={qrData} />}
+          <QRDisplay
+            barrelId={id}
+            productName={barrel.product ?? undefined}
+            currentStatus={barrel.status}
+          />
         </div>
 
         {/* Right: timeline */}

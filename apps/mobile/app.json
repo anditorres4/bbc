@@ -16,7 +16,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.bbc.barreltrack",
       "infoPlist": {
-        "NSCameraUsageDescription": "Permite escanear códigos QR de barriles"
+        "NSCameraUsageDescription": "Permite escanear códigos QR de barriles",
+        "NSLocationWhenInUseUsageDescription": "Registra la ubicación en cada entrega y recogida de barriles"
       }
     },
     "android": {
@@ -25,11 +26,12 @@
         "backgroundColor": "#1A1612"
       },
       "package": "com.bbc.barreltrack",
-      "permissions": ["CAMERA"]
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
     },
     "plugins": [
       "expo-router",
-      ["expo-camera", { "cameraPermission": "Permite escanear códigos QR de barriles" }]
+      ["expo-camera", { "cameraPermission": "Permite escanear códigos QR de barriles" }],
+      ["expo-location", { "locationAlwaysAndWhenInUsePermission": "Registra la ubicación en cada entrega y recogida de barriles" }]
     ],
     "scheme": "bbc-barrel-track",
     "web": {
