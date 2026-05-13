@@ -7,7 +7,7 @@ import { authorize } from '../middleware/authorize'
 import { handleError } from '../common/errors'
 import * as svc from './rutas.service'
 
-const router = Router()
+const router: Router = Router()
 
 // ── GET /api/rutas ────────────────────────────────────────────────────────────
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {

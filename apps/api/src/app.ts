@@ -1,4 +1,4 @@
-import express from 'express'
+import express, { type Express } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
@@ -10,7 +10,7 @@ import { puntosRouter } from './puntos/puntos.router'
 import { usuariosRouter } from './usuarios/usuarios.router'
 import { alertasRouter } from './alertas/alertas.router'
 
-const app = express()
+const app: Express = express()
 
 app.use(helmet())
 app.use(

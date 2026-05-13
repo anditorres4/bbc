@@ -6,7 +6,7 @@ import { authenticate, AuthRequest } from '../middleware/authenticate'
 import { authorize } from '../middleware/authorize'
 import { AppError, handleError } from '../common/errors'
 
-const router = Router()
+const router: Router = Router()
 
 // ── GET /api/puntos ───────────────────────────────────────────────────────────
 router.get('/', authenticate, async (_req: AuthRequest, res: Response) => {

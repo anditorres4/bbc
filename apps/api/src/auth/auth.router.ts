@@ -7,7 +7,7 @@ import { AuthError } from './auth.types'
 import { authenticate } from '../middleware/authenticate'
 import type { AuthRequest } from '../middleware/authenticate'
 
-const router = Router()
+const router: Router = Router()
 
 const REFRESH_COOKIE = 'bbc_refresh'
 

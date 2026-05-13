@@ -8,7 +8,7 @@ import { authenticate, AuthRequest } from '../middleware/authenticate'
 import { authorize } from '../middleware/authorize'
 import { AppError, handleError } from '../common/errors'
 
-const router = Router()
+const router: Router = Router()
 
 // All routes require ADMIN role
 router.use(authenticate, authorize('ADMIN'))

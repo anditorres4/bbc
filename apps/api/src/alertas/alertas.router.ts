@@ -7,7 +7,7 @@ import { authenticate, AuthRequest } from '../middleware/authenticate'
 import { AppError, handleError } from '../common/errors'
 import { alertStream } from '../services/alertStream'
 
-const router = Router()
+const router: Router = Router()
 
 // ── GET /api/alertas/stream (SSE) — before /:id to avoid param conflict ──────
 router.get('/stream', authenticate, (req: AuthRequest, res: Response) => {
