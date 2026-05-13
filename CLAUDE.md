@@ -166,13 +166,13 @@ Archivo: `apps/api/src/db/seed.ts`
 
 | Rol | Email | Password |
 |-----|-------|----------|
-| ADMIN | admin@bbc.co | Bbc2024! |
-| SUPERVISOR | supervisor@bbc.co | Bbc2024! |
-| OPERARIO_BODEGA | operario1@bbc.co | Bbc2024! |
-| OPERARIO_BODEGA | operario2@bbc.co | Bbc2024! |
-| TRANSPORTISTA | trans1@bbc.co | Bbc2024! |
-| TRANSPORTISTA | trans2@bbc.co | Bbc2024! |
-| TRANSPORTISTA | trans3@bbc.co | Bbc2024! |
+| ADMIN | admin@bbc.co | BBC2026! |
+| SUPERVISOR | supervisor@bbc.co | BBC2026! |
+| OPERARIO_BODEGA | operario1@bbc.co | BBC2026! |
+| OPERARIO_BODEGA | operario2@bbc.co | BBC2026! |
+| TRANSPORTISTA | trans1@bbc.co | BBC2026! |
+| TRANSPORTISTA | trans2@bbc.co | BBC2026! |
+| TRANSPORTISTA | trans3@bbc.co | BBC2026! |
 
 Puntos de entrega: Bar El Barril Feliz, Restaurante La Cervecería, Pub The Hop Garden.
 **Los barriles NO se seedean** — se registran escaneando el QR físico.
