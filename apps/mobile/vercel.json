@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd ../.. && pnpm --filter mobile run build:web",
+  "outputDirectory": "dist",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

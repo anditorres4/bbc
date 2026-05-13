@@ -32,6 +32,11 @@
       ["expo-camera", { "cameraPermission": "Permite escanear códigos QR de barriles" }]
     ],
     "scheme": "bbc-barrel-track",
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/icon.png"
+    },
     "experiments": {
       "typedRoutes": false
     }
