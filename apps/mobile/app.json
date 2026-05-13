@@ -34,7 +34,7 @@
     "scheme": "bbc-barrel-track",
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/icon.png"
     },
     "experiments": {
