@@ -10,11 +10,12 @@ import type { AuthRequest } from '../middleware/authenticate'
 const router: Router = Router()
 
 const REFRESH_COOKIE = 'bbc_refresh'
+const isProduction = process.env.NODE_ENV === 'production'
 
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
+  secure: isProduction,
+  sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días en ms
   path: '/',
 }

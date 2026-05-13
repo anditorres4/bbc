@@ -141,6 +141,7 @@ describe('Auth API', () => {
           : []
       expect(setCookie.some((c) => c.startsWith('bbc_refresh='))).toBe(true)
       expect(setCookie.some((c) => c.includes('HttpOnly'))).toBe(true)
+      expect(setCookie.some((c) => c.includes('SameSite=Lax'))).toBe(true)
     })
 
     it('[✓ login fallido] retorna 401 con contraseña incorrecta', async () => {

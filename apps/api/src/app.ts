@@ -12,11 +12,57 @@ import { alertasRouter } from './alertas/alertas.router'
 
 const app: Express = express()
 
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, '')
+}
+
+function parseAllowedOrigins(value?: string): string[] {
+  if (!value) return ['http://localhost:3000']
+
+  return value
+    .split(',')
+    .map((origin) => normalizeOrigin(origin))
+    .filter(Boolean)
+}
+
+function isOriginAllowed(requestOrigin: string, allowedOrigins: string[]): boolean {
+  const normalizedOrigin = normalizeOrigin(requestOrigin)
+
+  return allowedOrigins.some((allowedOrigin) => {
+    if (allowedOrigin.includes('*')) {
+      const pattern = allowedOrigin
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*')
+      return new RegExp(`^${pattern}$`).test(normalizedOrigin)
+    }
+
+    return normalizedOrigin === allowedOrigin
+  })
+}
+
+const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN)
+
 app.use(helmet())
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+    origin(origin, callback) {
+      // Requests sin Origin (health checks, server-to-server, curl) no deben fallar.
+      if (!origin) {
+        callback(null, true)
+        return
+      }
+
+      if (isOriginAllowed(origin, allowedOrigins)) {
+        callback(null, true)
+        return
+      }
+
+      callback(new Error(`Origin not allowed by CORS: ${origin}`))
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 204,
   })
 )
 app.use(express.json())
