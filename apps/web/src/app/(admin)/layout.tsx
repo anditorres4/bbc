@@ -27,10 +27,13 @@ function useSseAlerts() {
     if (!token) return
 
     const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
-    const es = new EventSource(`${BASE}/api/alertas/stream`, { withCredentials: true })
+    const es = new EventSource(
+      `${BASE}/api/alertas/stream?token=${encodeURIComponent(token)}`,
+      { withCredentials: true }
+    )
     esRef.current = es
 
-    es.addEventListener('alert', () => {
+    es.addEventListener('alerta', () => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
     })
 

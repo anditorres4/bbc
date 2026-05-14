@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import type { Response } from 'express'
+import type { Response, NextFunction } from 'express'
 import { z } from 'zod'
 import { AlertType, AlertSeverity, Role } from '@prisma/client'
 import { prisma } from '../db/client'
@@ -9,10 +9,22 @@ import { alertStream } from '../services/alertStream'
 
 const router: Router = Router()
 
-// ── GET /api/alertas/stream (SSE) — before /:id to avoid param conflict ──────
-router.get('/stream', authenticate, (req: AuthRequest, res: Response) => {
-  alertStream.addClient(req.user!.id, [req.user!.role], res)
-})
+// ── GET /api/alertas/stream (SSE) ─────────────────────────────────────────────
+// EventSource cannot set custom headers, so we accept the token via ?token=
+router.get(
+  '/stream',
+  (req: AuthRequest, _res: Response, next: NextFunction) => {
+    const qToken = req.query['token'] as string | undefined
+    if (qToken && !req.headers.authorization) {
+      req.headers.authorization = `Bearer ${qToken}`
+    }
+    next()
+  },
+  authenticate,
+  (req: AuthRequest, res: Response) => {
+    alertStream.addClient(req.user!.id, [req.user!.role], res)
+  }
+)
 
 // ── GET /api/alertas ──────────────────────────────────────────────────────────
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
@@ -52,6 +64,22 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     ])
 
     return res.json({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
+  } catch (err) {
+    return handleError(err, res)
+  }
+})
+
+// ── POST /api/alertas/leer-todas ──────────────────────────────────────────────
+router.post('/leer-todas', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    await prisma.alert.updateMany({
+      where: {
+        targetRoles: { has: req.user!.role as Role },
+        isRead: false,
+      },
+      data: { isRead: true, readById: req.user!.id, readAt: new Date() },
+    })
+    return res.json({ success: true })
   } catch (err) {
     return handleError(err, res)
   }

@@ -6,12 +6,13 @@ import * as Haptics from 'expo-haptics'
 import { theme, spacing } from '@/lib/theme'
 import { getAccessToken } from '@/lib/auth'
 import { api } from '@/lib/api'
-import type { Alert } from '@/lib/types'
+import type { Alert, PaginatedResponse } from '@/lib/types'
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000'
 
 export default function TransportistaLayout() {
   const [criticalMsg, setCriticalMsg] = useState<string | null>(null)
+  const [unreadCount, setUnreadCount] = useState(0)
   const bannerY = useRef(new Animated.Value(-80)).current
   const bannerTimer = useRef<ReturnType<typeof setTimeout>>()
   const active = useRef(true)
@@ -91,6 +92,26 @@ export default function TransportistaLayout() {
     }
   }, [])
 
+  // Separate effect for unread count badge — polls every 30s
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    let unmounted = false
+
+    async function fetchCount() {
+      try {
+        const data = await api.get<PaginatedResponse<Alert>>('/api/alertas?isRead=false&pageSize=1')
+        if (!unmounted) setUnreadCount(data.total)
+      } catch { /* silent */ }
+      if (!unmounted) timer = setTimeout(fetchCount, 30_000)
+    }
+
+    fetchCount()
+    return () => {
+      unmounted = true
+      clearTimeout(timer)
+    }
+  }, [])
+
   return (
     <View style={{ flex: 1 }}>
       <Tabs
@@ -124,6 +145,7 @@ export default function TransportistaLayout() {
           options={{
             title: 'Alertas',
             tabBarIcon: ({ color }) => <Bell size={22} color={color} />,
+            tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
           }}
         />
         <Tabs.Screen name="parada" options={{ href: null }} />

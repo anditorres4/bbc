@@ -45,10 +45,10 @@ export default function AlertasPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
   })
 
-  async function markAllRead() {
-    const unread = data?.items?.filter(a => !a.isRead) ?? []
-    await Promise.all(unread.map(a => markReadMutation.mutateAsync(a.id)))
-  }
+  const markAllReadMutation = useMutation({
+    mutationFn: () => api.post('/api/alertas/leer-todas'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  })
 
   const grouped = SEVERITY_GROUPS.reduce<Record<AlertSeverity, Alert[]>>((acc, sev) => {
     acc[sev] = (data?.items ?? []).filter(a =>
@@ -88,7 +88,12 @@ export default function AlertasPage() {
           </Select>
         </div>
         {unreadCount > 0 && (
-          <Button variant="outline" size="sm" onClick={markAllRead}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => markAllReadMutation.mutate()}
+            disabled={markAllReadMutation.isPending}
+          >
             <CheckCheck className="h-4 w-4" />
             Marcar todas leídas ({unreadCount})
           </Button>

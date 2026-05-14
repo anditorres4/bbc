@@ -3,7 +3,7 @@ import { prisma } from '../db/client'
 import { alertStream } from '../services/alertStream'
 
 const DAYS_WITHOUT_MOVEMENT = 60
-const DAYS_BEFORE_MAINTENANCE = 30
+const MONTHS_MAINTENANCE_ALERT = 11
 const DAYS_ROUTE_UNCLOSED = 1
 
 async function checkInactiveBarrels() {
@@ -38,15 +38,13 @@ async function checkInactiveBarrels() {
       },
     })
 
-    alertStream.broadcast('alerta', { alertId: alert.id, type: alert.type, severity: alert.severity }, [
-      'ADMIN',
-      'SUPERVISOR',
-    ])
+    alertStream.broadcast('alerta', alert, ['ADMIN', 'SUPERVISOR'])
   }
 }
 
 async function checkMaintenanceDue() {
-  const threshold = new Date(Date.now() + DAYS_BEFORE_MAINTENANCE * 86_400_000)
+  // Find barrels where last maintenance was 11+ months ago (due for maintenance soon)
+  const threshold = new Date(Date.now() - MONTHS_MAINTENANCE_ALERT * 30 * 86_400_000)
 
   const barrels = await prisma.barrel.findMany({
     where: {
@@ -72,10 +70,7 @@ async function checkMaintenanceDue() {
       },
     })
 
-    alertStream.broadcast('alerta', { alertId: alert.id, type: alert.type, severity: alert.severity }, [
-      'ADMIN',
-      'SUPERVISOR',
-    ])
+    alertStream.broadcast('alerta', alert, ['ADMIN', 'SUPERVISOR'])
   }
 }
 
@@ -106,10 +101,7 @@ async function checkLifespan() {
       },
     })
 
-    alertStream.broadcast('alerta', { alertId: alert.id, type: alert.type, severity: alert.severity }, [
-      'ADMIN',
-      'SUPERVISOR',
-    ])
+    alertStream.broadcast('alerta', alert, ['ADMIN', 'SUPERVISOR'])
   }
 }
 
@@ -137,10 +129,7 @@ async function checkUnclosedRoutes() {
       },
     })
 
-    alertStream.broadcast('alerta', { alertId: alert.id, type: alert.type, severity: alert.severity }, [
-      'ADMIN',
-      'SUPERVISOR',
-    ])
+    alertStream.broadcast('alerta', alert, ['ADMIN', 'SUPERVISOR'])
   }
 }
 
