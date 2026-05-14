@@ -306,34 +306,24 @@ async function main() {
             deliveryPointId: dp1.id,
             position: 1,
             barrelsAssigned: 3,
-            barrels: {
-              create: [
-                { barrelId: barrels[0].id, product: 'Monserrate Negra' }, // BBC-001
-                { barrelId: barrels[1].id, product: 'Monserrate Negra' }, // BBC-002
-                { barrelId: barrels[2].id, product: 'Monserrate Negra' }, // BBC-003
-              ],
+            requirements: {
+              create: [{ product: 'Monserrate Negra', quantity: 3 }],
             },
           },
           {
             deliveryPointId: dp2.id,
             position: 2,
             barrelsAssigned: 2,
-            barrels: {
-              create: [
-                { barrelId: barrels[10].id, product: 'Monserrate Roja' }, // BBC-011
-                { barrelId: barrels[11].id, product: 'Monserrate Roja' }, // BBC-012
-              ],
+            requirements: {
+              create: [{ product: 'Monserrate Roja', quantity: 2 }],
             },
           },
           {
             deliveryPointId: dp3.id,
             position: 3,
             barrelsAssigned: 2,
-            barrels: {
-              create: [
-                { barrelId: barrels[3].id, product: 'Monserrate Negra' }, // BBC-004
-                { barrelId: barrels[4].id, product: 'Monserrate Negra' }, // BBC-005
-              ],
+            requirements: {
+              create: [{ product: 'Monserrate Negra', quantity: 2 }],
             },
           },
         ],

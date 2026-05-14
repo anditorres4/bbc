@@ -1,25 +1,16 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Modal,
+  ActivityIndicator, Modal, ScrollView,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { FlashList } from '@shopify/flash-list'
-import {
-  ArrowLeft, ScanLine, ChevronDown, ChevronRight,
-  CheckCircle2, Circle,
-} from 'lucide-react-native'
+import { ArrowLeft, ScanLine, CheckCircle2, Package } from 'lucide-react-native'
 import { api } from '@/lib/api'
 import { incrementSessionCount } from '@/lib/offline'
-import { apiCall } from '@/lib/apiWithOffline'
 import { QRScanner } from '@/components/QRScanner'
 import { theme, spacing, radius } from '@/lib/theme'
-import type { Route, RouteStopBarrel, RouteStop, BarrelScanResult } from '@/lib/types'
-
-type ListItem =
-  | { type: 'stop_header'; stop: RouteStop; isExpanded: boolean }
-  | { type: 'barrel'; barrel: RouteStopBarrel; stopId: string }
+import type { Route, BarrelScanResult } from '@/lib/types'
 
 function Toast({ message }: { message: string | null }) {
   if (!message) return null
@@ -51,10 +42,11 @@ export default function AlistamientoDetailScreen() {
   const [route, setRoute] = useState<Route | null>(null)
   const [loading, setLoading] = useState(true)
   const [scannerVisible, setScannerVisible] = useState(false)
-  const [scannedBarrels, setScannedBarrels] = useState<Set<string>>(new Set())
-  const [expandedStops, setExpandedStops] = useState<Set<string>>(new Set())
+  // Map of barrelId → product for scanned barrels
+  const [scannedBarrels, setScannedBarrels] = useState<Map<string, string>>(new Map())
   const [toast, setToast] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const toastRef = useRef<ReturnType<typeof setTimeout>>()
 
   function showToast(msg: string) {
@@ -65,61 +57,74 @@ export default function AlistamientoDetailScreen() {
 
   useEffect(() => {
     api.get<{ data: Route }>(`/api/rutas/${routeId}`)
-      .then(res => {
-        setRoute(res.data)
-        const ids = new Set(res.data.stops?.map(s => s.id) ?? [])
-        setExpandedStops(ids)
-      })
-      .catch(() => {})
+      .then(res => setRoute(res.data))
+      .catch(() => showToast('Error cargando ruta'))
       .finally(() => setLoading(false))
   }, [routeId])
 
-  const allBarrelIds = useMemo(
-    () =>
-      new Set(
-        route?.stops?.flatMap(s => s.barrels?.map(b => b.barrelId) ?? []) ?? []
-      ),
-    [route]
-  )
-
-  const allScanned = allBarrelIds.size > 0 && scannedBarrels.size >= allBarrelIds.size
-
-  const listData = useMemo<ListItem[]>(() => {
-    if (!route?.stops) return []
-    const items: ListItem[] = []
-    for (const stop of route.stops) {
-      const isExpanded = expandedStops.has(stop.id)
-      items.push({ type: 'stop_header', stop, isExpanded })
-      if (isExpanded) {
-        for (const barrel of stop.barrels ?? []) {
-          items.push({ type: 'barrel', barrel, stopId: stop.id })
-        }
+  // Aggregate requirements by product across all stops
+  const required = useMemo<Map<string, number>>(() => {
+    const map = new Map<string, number>()
+    for (const stop of route?.stops ?? []) {
+      for (const req of stop.requirements ?? []) {
+        map.set(req.product, (map.get(req.product) ?? 0) + req.quantity)
       }
     }
-    return items
-  }, [route?.stops, expandedStops])
+    return map
+  }, [route])
 
-  function toggleStop(stopId: string) {
-    setExpandedStops(prev => {
-      const next = new Set(prev)
-      if (next.has(stopId)) next.delete(stopId)
-      else next.add(stopId)
-      return next
-    })
-  }
+  // Count scanned barrels by product
+  const scannedByProduct = useMemo<Map<string, number>>(() => {
+    const map = new Map<string, number>()
+    for (const product of scannedBarrels.values()) {
+      map.set(product, (map.get(product) ?? 0) + 1)
+    }
+    return map
+  }, [scannedBarrels])
+
+  const allRequirementsMet = useMemo(() => {
+    if (required.size === 0) return false
+    for (const [product, qty] of required.entries()) {
+      if ((scannedByProduct.get(product) ?? 0) < qty) return false
+    }
+    return true
+  }, [required, scannedByProduct])
+
+  const totalRequired = useMemo(
+    () => Array.from(required.values()).reduce((s, n) => s + n, 0),
+    [required]
+  )
+  const totalScanned = scannedBarrels.size
+  const progress = totalRequired > 0 ? totalScanned / totalRequired : 0
 
   function handleScanResult(result: BarrelScanResult, action: string) {
     if (action === 'cancel') return
     const barrelId = result.barrel.id
-    if (!allBarrelIds.has(barrelId)) {
-      showToast('⚠️ Este barril no pertenece a esta ruta')
-      return
-    }
+    const product = result.barrel.product ?? ''
+
     if (scannedBarrels.has(barrelId)) {
-      showToast('Ya fue escaneado')
+      showToast('Este barril ya fue escaneado')
       return
     }
-    setScannedBarrels(prev => new Set([...prev, barrelId]))
+
+    if (!product) {
+      showToast('⚠️ Este barril no tiene producto asignado')
+      return
+    }
+
+    const requiredQty = required.get(product) ?? 0
+    if (requiredQty === 0) {
+      showToast(`⚠️ "${product}" no es requerido en esta ruta`)
+      return
+    }
+
+    const alreadyScanned = scannedByProduct.get(product) ?? 0
+    if (alreadyScanned >= requiredQty) {
+      showToast(`Ya se escanearon todos los barriles de "${product}"`)
+      return
+    }
+
+    setScannedBarrels(prev => new Map(prev).set(barrelId, product))
     incrementSessionCount()
     setScannerVisible(false)
   }
@@ -127,14 +132,16 @@ export default function AlistamientoDetailScreen() {
   async function confirmSalida() {
     if (!route || confirming) return
     setConfirming(true)
-    const res = await apiCall(`/api/rutas/${route.id}/iniciar`, 'POST', {})
-    if (res.error) {
-      showToast(res.error)
-      setConfirming(false)
-    } else {
-      // queued or success — operator can proceed
-      if (res.queued) showToast('Sin conexión — se enviará al reconectar')
+    setError(null)
+    try {
+      await api.post(`/api/rutas/${route.id}/iniciar`, {
+        barrelIds: Array.from(scannedBarrels.keys()),
+      })
       router.back()
+    } catch (err: unknown) {
+      const e = err as { message?: string }
+      setError(e?.message ?? 'Error al iniciar ruta')
+      setConfirming(false)
     }
   }
 
@@ -145,10 +152,6 @@ export default function AlistamientoDetailScreen() {
       </SafeAreaView>
     )
   }
-
-  const scannedCount = scannedBarrels.size
-  const totalCount = allBarrelIds.size
-  const progress = totalCount > 0 ? scannedCount / totalCount : 0
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -165,71 +168,80 @@ export default function AlistamientoDetailScreen() {
         </View>
       </View>
 
+      {/* Overall progress */}
       <View style={styles.progressSection}>
         <View style={styles.progressHeader}>
           <Text style={styles.progressLabel}>Barriles escaneados</Text>
-          <Text style={styles.progressCount}>{scannedCount} / {totalCount}</Text>
+          <Text style={styles.progressCount}>{totalScanned} / {totalRequired}</Text>
         </View>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress * 100}%` as `${number}%` }]} />
+          <View style={[styles.progressFill, { width: `${Math.min(progress * 100, 100)}%` as `${number}%` }]} />
         </View>
       </View>
 
-      <FlashList
-        data={listData}
-        keyExtractor={(item, i) =>
-          item.type === 'stop_header' ? item.stop.id : `${item.stopId}-${item.barrel.barrelId}-${i}`
-        }
-        renderItem={({ item }) => {
-          if (item.type === 'stop_header') {
-            const { stop, isExpanded } = item
-            const stopScanned = (stop.barrels ?? []).filter(b => scannedBarrels.has(b.barrelId)).length
-            const stopTotal = (stop.barrels ?? []).length
-            return (
-              <TouchableOpacity
-                style={styles.stopHeader}
-                onPress={() => toggleStop(stop.id)}
-                activeOpacity={0.7}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.stopName}>{stop.deliveryPoint?.name ?? stop.deliveryPointId}</Text>
-                  <Text style={styles.stopCount}>{stopScanned}/{stopTotal} barriles</Text>
-                </View>
-                {isExpanded
-                  ? <ChevronDown size={18} color={theme.textSecondary} />
-                  : <ChevronRight size={18} color={theme.textSecondary} />
-                }
-              </TouchableOpacity>
-            )
-          }
-
-          const { barrel } = item
-          const isScanned = scannedBarrels.has(barrel.barrelId)
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Requirements per product */}
+        <Text style={styles.sectionTitle}>Requerimientos por producto</Text>
+        {Array.from(required.entries()).map(([product, qty]) => {
+          const scanned = scannedByProduct.get(product) ?? 0
+          const done = scanned >= qty
           return (
-            <View style={styles.barrelRow}>
-              {isScanned
-                ? <CheckCircle2 size={20} color={theme.amber} />
-                : <Circle size={20} color={theme.border} />
-              }
-              <Text style={[styles.barrelId, isScanned && styles.barrelIdScanned]}>
-                {barrel.barrel?.id ?? barrel.barrelId}
+            <View key={product} style={styles.productRow}>
+              <View style={styles.productIcon}>
+                {done
+                  ? <CheckCircle2 size={20} color={theme.amber} />
+                  : <Package size={20} color={theme.textSecondary} />
+                }
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.productName}>{product}</Text>
+                <View style={styles.productProgress}>
+                  <View style={styles.productProgressTrack}>
+                    <View
+                      style={[
+                        styles.productProgressFill,
+                        { width: `${Math.min((scanned / qty) * 100, 100)}%` as `${number}%` },
+                        done && styles.productProgressDone,
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+              <Text style={[styles.productCount, done && styles.productCountDone]}>
+                {scanned}/{qty}
               </Text>
-              <Text style={styles.barrelProduct}>{barrel.product}</Text>
             </View>
           )
-        }}
-        contentContainerStyle={styles.list}
-      />
+        })}
 
+        {/* Scanned barrel list */}
+        {scannedBarrels.size > 0 && (
+          <>
+            <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Barriles escaneados</Text>
+            {Array.from(scannedBarrels.entries()).map(([barrelId, product]) => (
+              <View key={barrelId} style={styles.barrelRow}>
+                <CheckCircle2 size={16} color={theme.amber} />
+                <Text style={styles.barrelId}>{barrelId}</Text>
+                <Text style={styles.barrelProduct}>{product}</Text>
+              </View>
+            ))}
+          </>
+        )}
+
+        {error && <Text style={styles.errorText}>{error}</Text>}
+      </ScrollView>
+
+      {/* FAB scan button */}
       <TouchableOpacity style={styles.fab} onPress={() => setScannerVisible(true)}>
         <ScanLine size={26} color="#000" />
       </TouchableOpacity>
 
+      {/* Bottom confirm bar */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[styles.confirmBtn, !allScanned && styles.confirmBtnDisabled]}
+          style={[styles.confirmBtn, !allRequirementsMet && styles.confirmBtnDisabled]}
           onPress={confirmSalida}
-          disabled={!allScanned || confirming}
+          disabled={!allRequirementsMet || confirming}
           activeOpacity={0.8}
         >
           {confirming
@@ -288,34 +300,66 @@ const styles = StyleSheet.create({
     backgroundColor: theme.amber,
     borderRadius: 3,
   },
-  list: { paddingBottom: 140 },
-  stopHeader: {
+  scrollContent: { padding: spacing.md, paddingBottom: 140 },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: spacing.sm,
+  },
+  productRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
     backgroundColor: theme.card,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-    marginTop: spacing.sm,
-    marginHorizontal: spacing.md,
     borderRadius: radius.sm,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.border,
   },
-  stopName: { color: theme.text, fontWeight: '600', fontSize: 14 },
-  stopCount: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },
+  productIcon: { width: 24, alignItems: 'center' },
+  productName: { color: theme.text, fontSize: 14, fontWeight: '500', marginBottom: 6 },
+  productProgress: { flexDirection: 'row', alignItems: 'center' },
+  productProgressTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: theme.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  productProgressFill: {
+    height: 4,
+    backgroundColor: theme.amber,
+    borderRadius: 2,
+  },
+  productProgressDone: { backgroundColor: '#22c55e' },
+  productCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.textSecondary,
+    minWidth: 36,
+    textAlign: 'right',
+  },
+  productCountDone: { color: '#22c55e' },
   barrelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
-    marginHorizontal: spacing.md,
   },
   barrelId: { color: theme.text, fontSize: 14, fontWeight: '500', flex: 1 },
-  barrelIdScanned: { color: theme.amber },
   barrelProduct: { color: theme.textSecondary, fontSize: 13 },
+  errorText: {
+    color: '#ef4444',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
   fab: {
     position: 'absolute',
     bottom: 90,

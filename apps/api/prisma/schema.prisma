@@ -58,7 +58,6 @@ enum StopStatus {
 }
 
 enum BarrelStopStatus {
-  ASIGNADO
   ENTREGADO
   RECOGIDO_VACIO
   NOVEDAD
@@ -132,6 +131,7 @@ model Barrel {
   createdBy        User              @relation("BarrelCreatedBy", fields: [createdById], references: [id])
   events           BarrelEvent[]
   routeStopBarrels RouteStopBarrel[]
+  routeBarrels     RouteBarrel[]
   alerts           Alert[]
 }
 
@@ -186,10 +186,11 @@ model Route {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  transportist User        @relation("RouteTransportist", fields: [transportistId], references: [id])
-  stops        RouteStop[]
-  events       BarrelEvent[]
-  alerts       Alert[]
+  transportist  User          @relation("RouteTransportist", fields: [transportistId], references: [id])
+  stops         RouteStop[]
+  loadedBarrels RouteBarrel[]
+  events        BarrelEvent[]
+  alerts        Alert[]
 }
 
 model RouteStop {
@@ -205,20 +206,44 @@ model RouteStop {
   lat              Float?
   lng              Float?
 
-  route         Route            @relation(fields: [routeId], references: [id])
-  deliveryPoint DeliveryPoint    @relation(fields: [deliveryPointId], references: [id])
+  route         Route                  @relation(fields: [routeId], references: [id])
+  deliveryPoint DeliveryPoint          @relation(fields: [deliveryPointId], references: [id])
+  requirements  RouteStopRequirement[]
   barrels       RouteStopBarrel[]
   alerts        Alert[]
 
   @@unique([routeId, position])
 }
 
+// Qué productos y cantidades se necesitan en cada parada (definido al crear la ruta)
+model RouteStopRequirement {
+  id          String    @id @default(cuid())
+  routeStopId String
+  product     String
+  quantity    Int
+
+  routeStop RouteStop @relation(fields: [routeStopId], references: [id])
+}
+
+// Barriles cargados en el camión durante alistamiento (asignados a la ruta, sin parada específica)
+model RouteBarrel {
+  id       String @id @default(cuid())
+  routeId  String
+  barrelId String
+
+  route  Route  @relation(fields: [routeId], references: [id])
+  barrel Barrel @relation(fields: [barrelId], references: [id])
+
+  @@unique([routeId, barrelId])
+}
+
+// Registro de entrega/recogida real por parada (creado durante la ejecución, no al planificar)
 model RouteStopBarrel {
   id              String           @id @default(cuid())
   routeStopId     String
   barrelId        String
   product         String
-  status          BarrelStopStatus @default(ASIGNADO)
+  status          BarrelStopStatus @default(ENTREGADO)
   deliveredAt     DateTime?
   pickedUpEmptyAt DateTime?
 

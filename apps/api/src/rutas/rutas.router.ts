@@ -32,11 +32,14 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 // ── POST /api/rutas ───────────────────────────────────────────────────────────
 router.post('/', authenticate, authorize('SUPERVISOR', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
-    const barrelSchema = z.object({ barrelId: z.string(), product: z.string().min(1) })
+    const requirementSchema = z.object({
+      product: z.string().min(1, 'Producto requerido'),
+      quantity: z.number().int().positive('Cantidad debe ser mayor a 0'),
+    })
     const stopSchema = z.object({
       deliveryPointId: z.string(),
       position: z.number().int().positive(),
-      barrels: z.array(barrelSchema).min(1),
+      requirements: z.array(requirementSchema).min(1, 'Cada parada necesita al menos un requerimiento'),
     })
     const schema = z.object({
       name: z.string().min(1),
@@ -59,8 +62,7 @@ router.post('/', authenticate, authorize('SUPERVISOR', 'ADMIN'), async (req: Aut
 // ── GET /api/rutas/:id ────────────────────────────────────────────────────────
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const id = req.params['id'] as string
-    const route = await svc.getRoute(id)
+    const route = await svc.getRoute(req.params['id'] as string)
     return res.json({ data: route })
   } catch (err) {
     return handleError(err, res)
@@ -70,7 +72,6 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 // ── PATCH /api/rutas/:id ──────────────────────────────────────────────────────
 router.patch('/:id', authenticate, authorize('SUPERVISOR', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
-    const id = req.params['id'] as string
     const schema = z.object({
       name: z.string().optional(),
       date: z.coerce.date().optional(),
@@ -80,7 +81,7 @@ router.patch('/:id', authenticate, authorize('SUPERVISOR', 'ADMIN'), async (req:
     const parsed = schema.safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
 
-    const route = await svc.updateRoute(id, parsed.data)
+    const route = await svc.updateRoute(req.params['id'] as string, parsed.data)
     return res.json({ data: route })
   } catch (err) {
     return handleError(err, res)
@@ -88,20 +89,36 @@ router.patch('/:id', authenticate, authorize('SUPERVISOR', 'ADMIN'), async (req:
 })
 
 // ── POST /api/rutas/:id/iniciar ───────────────────────────────────────────────
+// Called by bodega operator after scanning all barrels (barrelIds = scanned barrels)
 router.post(
   '/:id/iniciar',
   authenticate,
-  authorize('TRANSPORTISTA', 'SUPERVISOR', 'ADMIN'),
+  authorize('OPERARIO_BODEGA', 'SUPERVISOR', 'ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
-      const id = req.params['id'] as string
-      const route = await svc.iniciarRuta(id, req.user!.id)
+      const schema = z.object({
+        barrelIds: z.array(z.string()).min(1, 'Debe incluir al menos un barril'),
+      })
+      const parsed = schema.safeParse(req.body)
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
+
+      const route = await svc.iniciarRuta(req.params['id'] as string, parsed.data.barrelIds, req.user!.id)
       return res.json({ data: route })
     } catch (err) {
       return handleError(err, res)
     }
   }
 )
+
+// ── GET /api/rutas/:id/stops/:stopId ─────────────────────────────────────────
+router.get('/:id/stops/:stopId', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const stop = await svc.getStop(req.params['id'] as string, req.params['stopId'] as string)
+    return res.json({ data: stop })
+  } catch (err) {
+    return handleError(err, res)
+  }
+})
 
 // ── POST /api/rutas/:id/stops/:stopId/entregar ────────────────────────────────
 router.post(
@@ -110,8 +127,6 @@ router.post(
   authorize('TRANSPORTISTA', 'SUPERVISOR', 'ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
-      const id = req.params['id'] as string
-      const stopId = req.params['stopId'] as string
       const schema = z.object({
         barrelIds: z.array(z.string()).min(1),
         lat: z.number().optional(),
@@ -120,7 +135,14 @@ router.post(
       const parsed = schema.safeParse(req.body)
       if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
 
-      const stop = await svc.entregarStop(id, stopId, parsed.data.barrelIds, req.user!.id, parsed.data.lat, parsed.data.lng)
+      const stop = await svc.entregarStop(
+        req.params['id'] as string,
+        req.params['stopId'] as string,
+        parsed.data.barrelIds,
+        req.user!.id,
+        parsed.data.lat,
+        parsed.data.lng
+      )
       return res.json({ data: stop })
     } catch (err) {
       return handleError(err, res)
@@ -135,8 +157,6 @@ router.post(
   authorize('TRANSPORTISTA', 'SUPERVISOR', 'ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
-      const id = req.params['id'] as string
-      const stopId = req.params['stopId'] as string
       const schema = z.object({
         barrelIds: z.array(z.string()).min(1),
         lat: z.number().optional(),
@@ -145,7 +165,41 @@ router.post(
       const parsed = schema.safeParse(req.body)
       if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
 
-      const stop = await svc.recogerStop(id, stopId, parsed.data.barrelIds, req.user!.id, parsed.data.lat, parsed.data.lng)
+      const stop = await svc.recogerStop(
+        req.params['id'] as string,
+        req.params['stopId'] as string,
+        parsed.data.barrelIds,
+        req.user!.id,
+        parsed.data.lat,
+        parsed.data.lng
+      )
+      return res.json({ data: stop })
+    } catch (err) {
+      return handleError(err, res)
+    }
+  }
+)
+
+// ── POST /api/rutas/:id/stops/:stopId/completar ───────────────────────────────
+router.post(
+  '/:id/stops/:stopId/completar',
+  authenticate,
+  authorize('TRANSPORTISTA', 'SUPERVISOR', 'ADMIN'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const schema = z.object({
+        lat: z.number().optional(),
+        lng: z.number().optional(),
+      })
+      const parsed = schema.safeParse(req.body)
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
+
+      const stop = await svc.completarStop(
+        req.params['id'] as string,
+        req.params['stopId'] as string,
+        parsed.data.lat,
+        parsed.data.lng
+      )
       return res.json({ data: stop })
     } catch (err) {
       return handleError(err, res)
@@ -160,8 +214,6 @@ router.post(
   authorize('TRANSPORTISTA', 'SUPERVISOR', 'ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
-      const id = req.params['id'] as string
-      const stopId = req.params['stopId'] as string
       const schema = z.object({
         description: z.string().min(1, 'Descripción requerida'),
         barrelId: z.string().optional(),
@@ -169,7 +221,13 @@ router.post(
       const parsed = schema.safeParse(req.body)
       if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
 
-      const alert = await svc.novedadStop(id, stopId, parsed.data.description, req.user!.id, parsed.data.barrelId)
+      const alert = await svc.novedadStop(
+        req.params['id'] as string,
+        req.params['stopId'] as string,
+        parsed.data.description,
+        req.user!.id,
+        parsed.data.barrelId
+      )
       return res.status(201).json({ data: alert })
     } catch (err) {
       return handleError(err, res)
@@ -184,8 +242,7 @@ router.post(
   authorize('TRANSPORTISTA', 'SUPERVISOR', 'ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
-      const id = req.params['id'] as string
-      const route = await svc.cerrarRuta(id, req.user!.id)
+      const route = await svc.cerrarRuta(req.params['id'] as string, req.user!.id)
       return res.json({ data: route })
     } catch (err) {
       return handleError(err, res)

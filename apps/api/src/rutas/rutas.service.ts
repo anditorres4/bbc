@@ -1,13 +1,13 @@
 import { BarrelStatus, BarrelStopStatus, EventType, RouteStatus, StopStatus } from '@prisma/client'
 import { prisma } from '../db/client'
 import { AppError } from '../common/errors'
-import { assertTransition } from '../services/barrelStateMachine'
 import { alertStream } from '../services/alertStream'
 
+type RequirementInput = { product: string; quantity: number }
 type StopInput = {
   deliveryPointId: string
   position: number
-  barrels: Array<{ barrelId: string; product: string }>
+  requirements: RequirementInput[]
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -17,7 +17,7 @@ async function findRouteOrFail(id: string) {
     where: { id },
     include: {
       stops: {
-        include: { barrels: true, deliveryPoint: true },
+        include: { barrels: true, deliveryPoint: true, requirements: true },
         orderBy: { position: 'asc' },
       },
     },
@@ -86,28 +86,8 @@ export async function createRoute(
     vehiclePlate?: string
     stops: StopInput[]
   },
-  userId: string
+  _userId: string
 ) {
-  // Validate all barrels are EN_BODEGA
-  const allBarrelIds = data.stops.flatMap(s => s.barrels.map(b => b.barrelId))
-  const barrels = await prisma.barrel.findMany({ where: { id: { in: allBarrelIds } } })
-
-  if (barrels.length !== allBarrelIds.length) {
-    const found = new Set(barrels.map(b => b.id))
-    const missing = allBarrelIds.filter(id => !found.has(id))
-    throw new AppError(`Barriles no encontrados: ${missing.join(', ')}`, 404, 'BARREL_NOT_FOUND')
-  }
-
-  const notInBodega = barrels.filter(b => b.status !== BarrelStatus.EN_BODEGA)
-  if (notInBodega.length > 0) {
-    throw new AppError(
-      `Barriles no disponibles (no están EN_BODEGA): ${notInBodega.map(b => `${b.id}(${b.status})`).join(', ')}`,
-      409,
-      'BARREL_NOT_AVAILABLE'
-    )
-  }
-
-  // Create route
   const route = await prisma.route.create({
     data: {
       name: data.name,
@@ -118,41 +98,46 @@ export async function createRoute(
         create: data.stops.map(stop => ({
           deliveryPointId: stop.deliveryPointId,
           position: stop.position,
-          barrelsAssigned: stop.barrels.length,
-          barrels: {
-            create: stop.barrels.map(b => ({
-              barrelId: b.barrelId,
-              product: b.product,
-            })),
+          barrelsAssigned: stop.requirements.reduce((sum, r) => sum + r.quantity, 0),
+          requirements: {
+            create: stop.requirements.map(r => ({ product: r.product, quantity: r.quantity })),
           },
         })),
       },
     },
-    include: { stops: { include: { barrels: true } } },
+    include: {
+      stops: { include: { requirements: true }, orderBy: { position: 'asc' } },
+    },
   })
-
-  // Transition all barrels to EN_ALISTAMIENTO
-  await Promise.all(
-    barrels.map(b =>
-      Promise.all([
-        prisma.barrel.update({ where: { id: b.id }, data: { status: BarrelStatus.EN_ALISTAMIENTO } }),
-        createBarrelEvent(b.id, EventType.ALISTAMIENTO, b.status, BarrelStatus.EN_ALISTAMIENTO, userId, {
-          routeId: route.id,
-        }),
-      ])
-    )
-  )
 
   return route
 }
 
 export async function getRoute(id: string) {
   const route = await findRouteOrFail(id)
-  // Add progress
   const totalBarrels = route.stops.reduce((n, s) => n + s.barrelsAssigned, 0)
   const delivered = route.stops.reduce((n, s) => n + s.barrelsDelivered, 0)
   const pickedUp = route.stops.reduce((n, s) => n + s.barrelsPickedUp, 0)
-  return { ...route, progress: { totalBarrels, delivered, pickedUp } }
+
+  const stops = route.stops.map(s => ({
+    ...s,
+    totalBarrels: s.barrelsAssigned,
+  }))
+
+  return { ...route, stops, progress: { totalBarrels, delivered, pickedUp } }
+}
+
+export async function getStop(routeId: string, stopId: string) {
+  const stop = await prisma.routeStop.findFirst({
+    where: { id: stopId, routeId },
+    include: {
+      barrels: { include: { barrel: { select: { id: true, qrCode: true } } } },
+      requirements: true,
+      deliveryPoint: true,
+    },
+  })
+  if (!stop) throw new AppError('Parada no encontrada', 404, 'STOP_NOT_FOUND')
+  return { ...stop, totalBarrels: stop.barrelsAssigned }
 }
 
 export async function updateRoute(
@@ -166,17 +151,59 @@ export async function updateRoute(
   return prisma.route.update({ where: { id }, data })
 }
 
-export async function iniciarRuta(id: string, userId: string) {
+export async function iniciarRuta(id: string, barrelIds: string[], userId: string) {
   const route = await findRouteOrFail(id)
   if (route.status !== RouteStatus.PLANIFICADA) {
     throw new AppError('La ruta ya fue iniciada o no está planificada', 409, 'ROUTE_NOT_PLANIFICADA')
   }
+  if (barrelIds.length === 0) {
+    throw new AppError('Debe escanear al menos un barril para iniciar la ruta', 400, 'NO_BARRELS')
+  }
 
-  const allBarrelIds = route.stops.flatMap(s => s.barrels.map(b => b.barrelId))
-  const barrels = await prisma.barrel.findMany({ where: { id: { in: allBarrelIds } } })
+  // Validate all barrels exist and are EN_BODEGA
+  const barrels = await prisma.barrel.findMany({ where: { id: { in: barrelIds } } })
+  if (barrels.length !== barrelIds.length) {
+    const found = new Set(barrels.map(b => b.id))
+    const missing = barrelIds.filter(bid => !found.has(bid))
+    throw new AppError(`Barriles no encontrados: ${missing.join(', ')}`, 404, 'BARREL_NOT_FOUND')
+  }
+  const notReady = barrels.filter(b => b.status !== BarrelStatus.EN_BODEGA)
+  if (notReady.length > 0) {
+    throw new AppError(
+      `Barriles no disponibles (no están EN_BODEGA): ${notReady.map(b => `${b.id}(${b.status})`).join(', ')}`,
+      409,
+      'BARREL_NOT_AVAILABLE'
+    )
+  }
+
+  // Validate all requirements are fulfilled
+  const allReqs = route.stops.flatMap(s => s.requirements)
+  const required: Record<string, number> = {}
+  for (const req of allReqs) {
+    required[req.product] = (required[req.product] ?? 0) + req.quantity
+  }
+  const scannedByProduct: Record<string, number> = {}
+  for (const b of barrels) {
+    if (b.product) {
+      scannedByProduct[b.product] = (scannedByProduct[b.product] ?? 0) + 1
+    }
+  }
+  for (const [product, qty] of Object.entries(required)) {
+    const scanned = scannedByProduct[product] ?? 0
+    if (scanned < qty) {
+      throw new AppError(
+        `Faltan ${qty - scanned} barril(es) de "${product}"`,
+        400,
+        'REQUIREMENTS_NOT_MET'
+      )
+    }
+  }
 
   await Promise.all([
     prisma.route.update({ where: { id }, data: { status: RouteStatus.EN_CURSO, departedAt: new Date() } }),
+    prisma.routeBarrel.createMany({
+      data: barrelIds.map(barrelId => ({ routeId: id, barrelId })),
+    }),
     ...barrels.map(b =>
       Promise.all([
         prisma.barrel.update({ where: { id: b.id }, data: { status: BarrelStatus.EN_TRANSPORTE } }),
@@ -187,7 +214,10 @@ export async function iniciarRuta(id: string, userId: string) {
     ),
   ])
 
-  return prisma.route.findUnique({ where: { id }, include: { stops: true } })
+  return prisma.route.findUnique({
+    where: { id },
+    include: { stops: { include: { requirements: true }, orderBy: { position: 'asc' } } },
+  })
 }
 
 export async function entregarStop(
@@ -202,13 +232,21 @@ export async function entregarStop(
   if (route.status !== RouteStatus.EN_CURSO && route.status !== RouteStatus.CON_NOVEDAD) {
     throw new AppError('La ruta no está en curso', 409, 'ROUTE_NOT_EN_CURSO')
   }
-
   const stop = route.stops.find(s => s.id === stopId)
   if (!stop) throw new AppError('Parada no encontrada en esta ruta', 404, 'STOP_NOT_FOUND')
 
-  const stopBarrels = stop.barrels.filter(sb => barrelIds.includes(sb.barrelId))
-  if (stopBarrels.length !== barrelIds.length) {
-    throw new AppError('Algunos barriles no pertenecen a esta parada', 400, 'BARREL_NOT_IN_STOP')
+  // Validate barrels are on the truck
+  const routeBarrels = await prisma.routeBarrel.findMany({
+    where: { routeId, barrelId: { in: barrelIds } },
+  })
+  if (routeBarrels.length !== barrelIds.length) {
+    const found = new Set(routeBarrels.map(rb => rb.barrelId))
+    const missing = barrelIds.filter(bid => !found.has(bid))
+    throw new AppError(
+      `Barriles no están en este camión: ${missing.join(', ')}`,
+      400,
+      'BARREL_NOT_ON_TRUCK'
+    )
   }
 
   const barrels = await prisma.barrel.findMany({ where: { id: { in: barrelIds } } })
@@ -221,8 +259,45 @@ export async function entregarStop(
     )
   }
 
+  // Validate product matches stop requirements and quantity not exceeded
+  for (const barrel of barrels) {
+    const req = stop.requirements.find(r => r.product === barrel.product)
+    if (!req) {
+      throw new AppError(
+        `El producto "${barrel.product}" no está en los requerimientos de esta parada`,
+        400,
+        'PRODUCT_NOT_REQUIRED'
+      )
+    }
+    const alreadyDelivered = await prisma.routeStopBarrel.count({
+      where: {
+        routeStopId: stopId,
+        status: BarrelStopStatus.ENTREGADO,
+        barrel: { product: barrel.product },
+      },
+    })
+    if (alreadyDelivered >= req.quantity) {
+      throw new AppError(
+        `Ya se completó la cantidad requerida de "${barrel.product}" en esta parada`,
+        400,
+        'REQUIREMENT_FULFILLED'
+      )
+    }
+  }
+
   const now = new Date()
   await Promise.all([
+    ...barrels.map(b =>
+      prisma.routeStopBarrel.create({
+        data: {
+          routeStopId: stopId,
+          barrelId: b.id,
+          product: b.product ?? '',
+          status: BarrelStopStatus.ENTREGADO,
+          deliveredAt: now,
+        },
+      })
+    ),
     ...barrels.map(b =>
       Promise.all([
         prisma.barrel.update({ where: { id: b.id }, data: { status: BarrelStatus.ENTREGADO } }),
@@ -232,30 +307,27 @@ export async function entregarStop(
           lat,
           lng,
         }),
-        prisma.routeStopBarrel.updateMany({
-          where: { routeStopId: stopId, barrelId: b.id },
-          data: { status: BarrelStopStatus.ENTREGADO, deliveredAt: now },
-        }),
       ])
     ),
     prisma.routeStop.update({
       where: { id: stopId },
-      data: {
-        barrelsDelivered: { increment: barrelIds.length },
-        lat,
-        lng,
-        deliveredAt: now,
-      },
+      data: { barrelsDelivered: { increment: barrelIds.length }, lat, lng, deliveredAt: now },
     }),
   ])
 
-  // Check if stop is complete
-  const updatedStop = await prisma.routeStop.findUnique({ where: { id: stopId } })
-  if (updatedStop && updatedStop.barrelsDelivered >= updatedStop.barrelsAssigned) {
-    await prisma.routeStop.update({ where: { id: stopId }, data: { status: StopStatus.COMPLETADA } })
+  // Mark stop COMPLETADA if all requirements met
+  const updatedStop = await prisma.routeStop.findUnique({
+    where: { id: stopId },
+    include: { requirements: true },
+  })
+  if (updatedStop) {
+    const totalRequired = updatedStop.requirements.reduce((sum, r) => sum + r.quantity, 0)
+    if (updatedStop.barrelsDelivered >= totalRequired) {
+      await prisma.routeStop.update({ where: { id: stopId }, data: { status: StopStatus.COMPLETADA } })
+    }
   }
 
-  return prisma.routeStop.findUnique({ where: { id: stopId }, include: { barrels: true } })
+  return getStop(routeId, stopId)
 }
 
 export async function recogerStop(
@@ -270,7 +342,6 @@ export async function recogerStop(
   if (route.status !== RouteStatus.EN_CURSO && route.status !== RouteStatus.CON_NOVEDAD) {
     throw new AppError('La ruta no está en curso', 409, 'ROUTE_NOT_EN_CURSO')
   }
-
   const stop = route.stops.find(s => s.id === stopId)
   if (!stop) throw new AppError('Parada no encontrada en esta ruta', 404, 'STOP_NOT_FOUND')
 
@@ -285,8 +356,8 @@ export async function recogerStop(
   }
 
   const now = new Date()
-  await Promise.all(
-    barrels.map(b =>
+  await Promise.all([
+    ...barrels.map(b =>
       Promise.all([
         prisma.barrel.update({ where: { id: b.id }, data: { status: BarrelStatus.EN_RECOGIDA } }),
         createBarrelEvent(b.id, EventType.RECOGIDA_VACIO, b.status, BarrelStatus.EN_RECOGIDA, userId, {
@@ -300,15 +371,34 @@ export async function recogerStop(
           data: { status: BarrelStopStatus.RECOGIDO_VACIO, pickedUpEmptyAt: now },
         }),
       ])
-    )
-  )
+    ),
+    prisma.routeStop.update({
+      where: { id: stopId },
+      data: { barrelsPickedUp: { increment: barrelIds.length } },
+    }),
+  ])
 
+  return getStop(routeId, stopId)
+}
+
+export async function completarStop(
+  routeId: string,
+  stopId: string,
+  lat?: number,
+  lng?: number
+) {
+  const route = await findRouteOrFail(routeId)
+  if (route.status !== RouteStatus.EN_CURSO && route.status !== RouteStatus.CON_NOVEDAD) {
+    throw new AppError('La ruta no está en curso', 409, 'ROUTE_NOT_EN_CURSO')
+  }
+  if (!route.stops.find(s => s.id === stopId)) {
+    throw new AppError('Parada no encontrada', 404, 'STOP_NOT_FOUND')
+  }
   await prisma.routeStop.update({
     where: { id: stopId },
-    data: { barrelsPickedUp: { increment: barrelIds.length } },
+    data: { status: StopStatus.COMPLETADA, lat, lng, deliveredAt: new Date() },
   })
-
-  return prisma.routeStop.findUnique({ where: { id: stopId }, include: { barrels: true } })
+  return getStop(routeId, stopId)
 }
 
 export async function novedadStop(
@@ -348,7 +438,7 @@ export async function novedadStop(
   return alert
 }
 
-export async function cerrarRuta(id: string, userId: string) {
+export async function cerrarRuta(id: string, _userId: string) {
   const route = await findRouteOrFail(id)
   if (route.status !== RouteStatus.EN_CURSO && route.status !== RouteStatus.CON_NOVEDAD) {
     throw new AppError('La ruta no está en curso', 409, 'ROUTE_NOT_EN_CURSO')

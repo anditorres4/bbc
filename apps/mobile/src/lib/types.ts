@@ -34,6 +34,13 @@ export interface BarrelScanResult {
   created: boolean
 }
 
+export interface RouteStopRequirement {
+  id: string
+  routeStopId: string
+  product: string
+  quantity: number
+}
+
 export interface RouteStopBarrel {
   id: string
   barrelId: string
@@ -55,8 +62,10 @@ export interface RouteStop {
   position: number
   status: string
   barrelsDelivered: number
+  barrelsPickedUp: number
   totalBarrels: number
   deliveryPoint?: DeliveryPoint
+  requirements?: RouteStopRequirement[]
   barrels?: RouteStopBarrel[]
 }
 

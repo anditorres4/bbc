@@ -3,10 +3,10 @@
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Play, CheckSquare, Loader2, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, CheckSquare, Loader2, AlertTriangle, Package } from 'lucide-react'
 import { api } from '@/lib/api'
-import { BarrelStatusBadge } from '@/components/BarrelStatusBadge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -24,10 +24,19 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELADA: 'Cancelada',
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  PLANIFICADA: 'bg-stone-100 text-stone-600',
+  EN_CURSO: 'bg-blue-100 text-blue-700',
+  COMPLETADA: 'bg-green-100 text-green-700',
+  CON_NOVEDAD: 'bg-red-100 text-red-700',
+  CANCELADA: 'bg-stone-200 text-stone-500',
+}
+
 const STOP_STATUS_COLOR: Record<string, string> = {
   PENDIENTE: 'bg-stone-100 text-stone-600',
   COMPLETADA: 'bg-green-100 text-green-700',
   CON_NOVEDAD: 'bg-red-100 text-red-700',
+  CANCELADA: 'bg-stone-200 text-stone-500',
 }
 
 type StopAction = { type: 'entregar' | 'recoger' | 'novedad'; stopId: string } | null
@@ -38,7 +47,7 @@ export default function RutaDetailPage() {
   const qc = useQueryClient()
 
   const [stopAction, setStopAction] = useState<StopAction>(null)
-  const [selectedBarrels, setSelectedBarrels] = useState<string[]>([])
+  const [barrelIdInput, setBarrelIdInput] = useState('')
   const [novedadDesc, setNovedadDesc] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
@@ -46,11 +55,6 @@ export default function RutaDetailPage() {
   const { data: route, isLoading } = useQuery({
     queryKey: ['route', id],
     queryFn: () => api.get<{ data: Route }>(`/api/rutas/${id}`).then(r => r.data),
-  })
-
-  const iniciarMutation = useMutation({
-    mutationFn: () => api.post(`/api/rutas/${id}/iniciar`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['route', id] }),
   })
 
   const cerrarMutation = useMutation({
@@ -66,12 +70,18 @@ export default function RutaDetailPage() {
       if (stopAction.type === 'novedad') {
         await api.post(`/api/rutas/${id}/stops/${stopAction.stopId}/novedad`, { description: novedadDesc })
       } else {
+        const barrelIds = barrelIdInput.split(',').map(s => s.trim()).filter(Boolean)
+        if (barrelIds.length === 0) {
+          setActionError('Ingresa al menos un ID de barril')
+          setActionLoading(false)
+          return
+        }
         const endpoint = stopAction.type === 'entregar' ? 'entregar' : 'recoger'
-        await api.post(`/api/rutas/${id}/stops/${stopAction.stopId}/${endpoint}`, { barrelIds: selectedBarrels })
+        await api.post(`/api/rutas/${id}/stops/${stopAction.stopId}/${endpoint}`, { barrelIds })
       }
       qc.invalidateQueries({ queryKey: ['route', id] })
       setStopAction(null)
-      setSelectedBarrels([])
+      setBarrelIdInput('')
       setNovedadDesc('')
     } catch (err: unknown) {
       const e = err as { message?: string }
@@ -87,12 +97,10 @@ export default function RutaDetailPage() {
 
   if (!route) return null
 
-  const currentStop = stopAction
-    ? route.stops?.find(s => s.id === stopAction.stopId)
-    : null
+  const canClose = route.status === 'EN_CURSO' || route.status === 'CON_NOVEDAD'
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 max-w-3xl">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
@@ -102,108 +110,142 @@ export default function RutaDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold">{route.name}</h2>
-              <Badge className={STATUS_LABEL[route.status] ? 'bg-stone-100 text-stone-700' : ''}>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[route.status] ?? ''}`}>
                 {STATUS_LABEL[route.status] ?? route.status}
-              </Badge>
+              </span>
             </div>
             <p className="text-sm text-stone-400">
-              {formatDate(route.date)} • {route.transportist?.name} • {route.vehiclePlate ?? 'Sin placa'}
+              {formatDate(route.date)} • {route.transportist?.name ?? 'Sin transportista'} • {route.vehiclePlate ?? 'Sin placa'}
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          {route.status === 'PLANIFICADA' && (
-            <Button onClick={() => iniciarMutation.mutate()} disabled={iniciarMutation.isPending}>
-              {iniciarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              Iniciar ruta
-            </Button>
-          )}
-          {route.status === 'EN_CURSO' && (
-            <Button variant="outline" onClick={() => cerrarMutation.mutate()} disabled={cerrarMutation.isPending}>
-              {cerrarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckSquare className="h-4 w-4" />}
-              Cerrar ruta
-            </Button>
-          )}
-        </div>
+        {canClose && (
+          <Button variant="outline" onClick={() => cerrarMutation.mutate()} disabled={cerrarMutation.isPending}>
+            {cerrarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckSquare className="h-4 w-4" />}
+            Cerrar ruta
+          </Button>
+        )}
       </div>
 
       {/* Stops */}
       <div className="space-y-3">
-        {route.stops?.map((stop, idx) => (
-          <Card key={stop.id}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">
-                  Parada {idx + 1} — {stop.deliveryPoint?.name ?? stop.deliveryPointId}
-                </CardTitle>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STOP_STATUS_COLOR[stop.status] ?? ''}`}>
-                  {stop.status}
-                </span>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
-                  <span>Barriles entregados</span>
-                  <span>{stop.barrelsDelivered}/{stop.totalBarrels}</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-stone-100">
-                  <div
-                    className="h-1.5 rounded-full bg-amber-500"
-                    style={{ width: `${stop.totalBarrels > 0 ? (stop.barrelsDelivered / stop.totalBarrels) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
+        {route.stops?.map((stop, idx) => {
+          const totalRequired = stop.requirements?.reduce((s, r) => s + r.quantity, 0) ?? stop.totalBarrels
+          const deliveredBarrels = stop.barrels?.filter(b => b.status === 'ENTREGADO') ?? []
+          const pickedUpBarrels = stop.barrels?.filter(b => b.status === 'RECOGIDO_VACIO') ?? []
+          const pct = totalRequired > 0 ? Math.round((stop.barrelsDelivered / totalRequired) * 100) : 0
 
-              {/* Barrels list */}
-              {stop.barrels && stop.barrels.length > 0 && (
-                <div className="mb-3 space-y-1">
-                  {stop.barrels.map(b => (
-                    <div key={b.id} className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-1.5 text-xs">
-                      <span className="font-medium">{b.barrel?.id ?? b.barrelId}</span>
-                      <span className="text-stone-400">{b.product}</span>
-                      <BarrelStatusBadge status={b.status as Parameters<typeof BarrelStatusBadge>[0]['status']} />
-                    </div>
-                  ))}
+          return (
+            <Card key={stop.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">
+                    Parada {idx + 1} — {stop.deliveryPoint?.name ?? stop.deliveryPointId}
+                  </CardTitle>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STOP_STATUS_COLOR[stop.status] ?? ''}`}>
+                    {stop.status}
+                  </span>
                 </div>
-              )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Progress bar */}
+                <div>
+                  <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
+                    <span>Entregados</span>
+                    <span>{stop.barrelsDelivered}/{totalRequired} ({pct}%)</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-stone-100">
+                    <div
+                      className="h-1.5 rounded-full bg-amber-500 transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
 
-              {/* Stop actions */}
-              {route.status === 'EN_CURSO' && stop.status === 'PENDIENTE' && (
-                <div className="flex gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setStopAction({ type: 'entregar', stopId: stop.id })
-                      setSelectedBarrels(stop.barrels?.map(b => b.barrelId) ?? [])
-                    }}
-                  >
-                    Entregar
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setStopAction({ type: 'recoger', stopId: stop.id })
-                      setSelectedBarrels(stop.barrels?.map(b => b.barrelId) ?? [])
-                    }}
-                  >
-                    Recoger vacíos
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setStopAction({ type: 'novedad', stopId: stop.id })}
-                  >
-                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    Novedad
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+                {/* Requirements */}
+                {stop.requirements && stop.requirements.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-stone-500 uppercase tracking-wide">Requerimientos</p>
+                    {stop.requirements.map(req => {
+                      const delivered = deliveredBarrels.filter(b => b.product === req.product).length
+                      return (
+                        <div key={req.id} className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-3.5 w-3.5 text-stone-400" />
+                            <span>{req.product}</span>
+                          </div>
+                          <span className={`text-xs font-medium ${delivered >= req.quantity ? 'text-green-600' : 'text-stone-500'}`}>
+                            {delivered}/{req.quantity}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Delivered barrels */}
+                {deliveredBarrels.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-stone-500 uppercase tracking-wide">Barriles entregados</p>
+                    {deliveredBarrels.map(b => (
+                      <div key={b.id} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-1.5 text-xs">
+                        <span className="font-medium">{b.barrel?.id ?? b.barrelId}</span>
+                        <span className="text-stone-500">{b.product}</span>
+                        <Badge variant="outline" className="text-green-700 border-green-200">Entregado</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Picked up barrels */}
+                {pickedUpBarrels.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-stone-500 uppercase tracking-wide">Vacíos recogidos</p>
+                    {pickedUpBarrels.map(b => (
+                      <div key={b.id} className="flex items-center justify-between rounded-lg bg-blue-50 px-3 py-1.5 text-xs">
+                        <span className="font-medium">{b.barrel?.id ?? b.barrelId}</span>
+                        <span className="text-stone-500">{b.product}</span>
+                        <Badge variant="outline" className="text-blue-700 border-blue-200">Recogido</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Stop actions (admin override) */}
+                {(route.status === 'EN_CURSO' || route.status === 'CON_NOVEDAD') && (
+                  <div className="flex gap-2 flex-wrap pt-1">
+                    {stop.status !== 'COMPLETADA' && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setStopAction({ type: 'entregar', stopId: stop.id }); setBarrelIdInput('') }}
+                        >
+                          Registrar entrega
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setStopAction({ type: 'recoger', stopId: stop.id }); setBarrelIdInput('') }}
+                        >
+                          Registrar recogida
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setStopAction({ type: 'novedad', stopId: stop.id })}
+                    >
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      Novedad
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
       {/* Action dialog */}
@@ -211,8 +253,8 @@ export default function RutaDetailPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {stopAction?.type === 'entregar' ? 'Confirmar entrega' :
-               stopAction?.type === 'recoger' ? 'Confirmar recogida' : 'Reportar novedad'}
+              {stopAction?.type === 'entregar' ? 'Registrar entrega' :
+               stopAction?.type === 'recoger' ? 'Registrar recogida de vacíos' : 'Reportar novedad'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
@@ -227,22 +269,14 @@ export default function RutaDetailPage() {
                 />
               </div>
             ) : (
-              <div className="space-y-2">
-                <Label>Barriles seleccionados</Label>
-                {currentStop?.barrels?.map(b => (
-                  <label key={b.barrelId} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedBarrels.includes(b.barrelId)}
-                      onChange={e => {
-                        if (e.target.checked) setSelectedBarrels(prev => [...prev, b.barrelId])
-                        else setSelectedBarrels(prev => prev.filter(id => id !== b.barrelId))
-                      }}
-                    />
-                    <span>{b.barrel?.id ?? b.barrelId}</span>
-                    <span className="text-stone-400">{b.product}</span>
-                  </label>
-                ))}
+              <div className="space-y-1.5">
+                <Label>IDs de barriles (separados por coma)</Label>
+                <Input
+                  value={barrelIdInput}
+                  onChange={e => setBarrelIdInput(e.target.value)}
+                  placeholder="BBC-001, BBC-002, …"
+                />
+                <p className="text-xs text-stone-400">Ingresa los IDs de los barriles a {stopAction?.type === 'entregar' ? 'entregar' : 'recoger'}</p>
               </div>
             )}
             {actionError && <p className="text-xs text-red-500">{actionError}</p>}

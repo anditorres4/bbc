@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, Modal, ScrollView, TextInput, KeyboardAvoidingView, Platform,
@@ -8,12 +8,11 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'
 import * as Location from 'expo-location'
 import {
   ArrowLeft, MapPin, Package, RefreshCw, ScanLine,
-  CheckCircle2, Circle, AlertTriangle,
+  CheckCircle2, AlertTriangle,
 } from 'lucide-react-native'
 import { api } from '@/lib/api'
 import { apiCall } from '@/lib/apiWithOffline'
 import { QRScanner } from '@/components/QRScanner'
-import { BarrelStatusBadge } from '@/components/BarrelStatusBadge'
 import { theme, spacing, radius } from '@/lib/theme'
 import type { RouteStop, BarrelScanResult } from '@/lib/types'
 
@@ -98,10 +97,19 @@ export default function ParadaDetailScreen() {
     requestGPS()
   }, [])
 
-  const pendingBarrels = stop?.barrels?.filter(b => b.status === 'ASIGNADO') ?? []
   const deliveredBarrels = stop?.barrels?.filter(b => b.status === 'ENTREGADO') ?? []
   const pickedUpBarrels = stop?.barrels?.filter(b => b.status === 'RECOGIDO_VACIO') ?? []
-  const allConfirmed = pendingBarrels.length === 0 && (stop?.barrels?.length ?? 0) > 0
+
+  // Count delivered per product for progress display
+  const deliveredByProduct = useMemo<Map<string, number>>(() => {
+    const map = new Map<string, number>()
+    for (const b of deliveredBarrels) {
+      map.set(b.product, (map.get(b.product) ?? 0) + 1)
+    }
+    return map
+  }, [deliveredBarrels])
+
+  const allDelivered = (stop?.barrelsDelivered ?? 0) >= (stop?.totalBarrels ?? 1) && (stop?.totalBarrels ?? 0) > 0
 
   async function handleScanResult(result: BarrelScanResult, action: string) {
     if (action === 'cancel') {
@@ -110,12 +118,6 @@ export default function ParadaDetailScreen() {
     }
 
     if (scanMode === 'entrega' && action === 'entregar') {
-      const inStop = stop?.barrels?.some(b => b.barrelId === result.barrel.id)
-      if (!inStop) {
-        showToast('Este barril no está asignado a este punto')
-        setScannerVisible(false)
-        return
-      }
       const res = await apiCall(`/api/rutas/${routeId}/stops/${stopId}/entregar`, 'POST', {
         barrelIds: [result.barrel.id],
         lat: gps?.lat ?? null,
@@ -125,9 +127,18 @@ export default function ParadaDetailScreen() {
         showToast('Guardado localmente — se enviará al reconectar')
         setStop(prev => prev ? {
           ...prev,
-          barrels: prev.barrels?.map(b =>
-            b.barrelId === result.barrel.id ? { ...b, status: 'ENTREGADO' } : b
-          ),
+          barrelsDelivered: prev.barrelsDelivered + 1,
+          barrels: [
+            ...(prev.barrels ?? []),
+            {
+              id: result.barrel.id,
+              barrelId: result.barrel.id,
+              product: result.barrel.product ?? '',
+              status: 'ENTREGADO',
+              deliveredAt: new Date().toISOString(),
+              barrel: { id: result.barrel.id, qrCode: result.barrel.qrCode },
+            },
+          ],
         } : prev)
       } else if (res.error) {
         showToast(res.error)
@@ -136,7 +147,7 @@ export default function ParadaDetailScreen() {
       }
     } else if (scanMode === 'recogida_vacio' && action === 'recoger') {
       const res = await apiCall(`/api/rutas/${routeId}/stops/${stopId}/recoger`, 'POST', {
-        barrelId: result.barrel.id,
+        barrelIds: [result.barrel.id],
         lat: gps?.lat ?? null,
         lng: gps?.lng ?? null,
       })
@@ -158,8 +169,6 @@ export default function ParadaDetailScreen() {
     try {
       const res = await apiCall(`/api/rutas/${routeId}/stops/${stopId}/novedad`, 'POST', {
         description: novedadText.trim(),
-        lat: gps?.lat ?? null,
-        lng: gps?.lng ?? null,
       })
       setNovedadVisible(false)
       setNovedadText('')
@@ -202,6 +211,8 @@ export default function ParadaDetailScreen() {
 
   const dpName = stop.deliveryPoint?.name ?? `Parada ${stop.position}`
   const dpAddr = stop.deliveryPoint?.address ?? ''
+  const totalRequired = stop.totalBarrels
+  const pct = totalRequired > 0 ? stop.barrelsDelivered / totalRequired : 0
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -219,7 +230,7 @@ export default function ParadaDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* GPS widget */}
+      {/* GPS + progress row */}
       <View style={styles.gpsRow}>
         <MapPin size={14} color={gps ? theme.green : theme.textSecondary} />
         <Text style={[styles.gpsText, { color: gps ? theme.green : theme.textSecondary }]}>
@@ -232,53 +243,85 @@ export default function ParadaDetailScreen() {
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scroll}>
-        {/* Barriles a entregar */}
+        {/* Overall delivery progress */}
+        <View style={styles.progressCard}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>Barriles entregados</Text>
+            <Text style={styles.progressCount}>{stop.barrelsDelivered}/{totalRequired}</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${Math.min(pct * 100, 100)}%` as `${number}%` }]} />
+          </View>
+        </View>
+
+        {/* Requirements per product */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Package size={16} color={theme.amber} />
-            <Text style={styles.sectionTitle}>Barriles a entregar</Text>
-            <Text style={styles.sectionCount}>
-              {deliveredBarrels.length}/{stop.totalBarrels}
-            </Text>
+            <Text style={styles.sectionTitle}>Requerimientos</Text>
           </View>
 
-          {(stop.barrels ?? []).map(barrel => {
-            const isDone = barrel.status === 'ENTREGADO' || barrel.status === 'RECOGIDO_VACIO'
-            const isNovedad = barrel.status === 'NOVEDAD'
+          {(stop.requirements ?? []).map(req => {
+            const delivered = deliveredByProduct.get(req.product) ?? 0
+            const done = delivered >= req.quantity
             return (
-              <View key={barrel.id} style={styles.barrelRow}>
-                {isDone
-                  ? <CheckCircle2 size={20} color={theme.green} />
-                  : isNovedad
-                  ? <AlertTriangle size={20} color={theme.orange} />
-                  : <Circle size={20} color={theme.border} />
-                }
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.barrelId, isDone && styles.barrelIdDone]}>
-                    {barrel.barrel?.id ?? barrel.barrelId}
-                  </Text>
-                  <Text style={styles.barrelProduct}>{barrel.product}</Text>
+              <View key={req.id} style={styles.reqRow}>
+                <View style={styles.reqIcon}>
+                  {done
+                    ? <CheckCircle2 size={18} color={theme.green} />
+                    : <Package size={18} color={theme.textSecondary} />
+                  }
                 </View>
-                <BarrelStatusBadge status={barrel.status as never} />
-                {barrel.status === 'ASIGNADO' && (
-                  <TouchableOpacity
-                    style={styles.scanBtn}
-                    onPress={() => {
-                      setScanMode('entrega')
-                      setScannerVisible(true)
-                    }}
-                  >
-                    <ScanLine size={16} color="#000" />
-                  </TouchableOpacity>
-                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reqProduct}>{req.product}</Text>
+                  <View style={styles.reqProgressTrack}>
+                    <View
+                      style={[
+                        styles.reqProgressFill,
+                        { width: `${Math.min((delivered / req.quantity) * 100, 100)}%` as `${number}%` },
+                        done && styles.reqProgressDone,
+                      ]}
+                    />
+                  </View>
+                </View>
+                <Text style={[styles.reqCount, done && styles.reqCountDone]}>
+                  {delivered}/{req.quantity}
+                </Text>
               </View>
             )
           })}
 
-          {(stop.barrels ?? []).length === 0 && (
-            <Text style={styles.emptySection}>Sin barriles asignados</Text>
+          {(stop.requirements ?? []).length === 0 && (
+            <Text style={styles.emptySection}>Sin requerimientos registrados</Text>
+          )}
+
+          {/* Scan to deliver */}
+          {!allDelivered && (
+            <TouchableOpacity
+              style={styles.scanDeliverBtn}
+              onPress={() => { setScanMode('entrega'); setScannerVisible(true) }}
+            >
+              <ScanLine size={20} color="#000" />
+              <Text style={styles.scanDeliverBtnText}>Escanear barril para entregar</Text>
+            </TouchableOpacity>
           )}
         </View>
+
+        {/* Delivered barrels list */}
+        {deliveredBarrels.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <CheckCircle2 size={16} color={theme.green} />
+              <Text style={styles.sectionTitle}>Barriles entregados</Text>
+            </View>
+            {deliveredBarrels.map(b => (
+              <View key={b.id} style={styles.barrelRow}>
+                <Text style={styles.barrelId}>{b.barrel?.id ?? b.barrelId}</Text>
+                <Text style={styles.barrelProduct}>{b.product}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Vacíos a recoger */}
         <View style={styles.section}>
@@ -288,12 +331,17 @@ export default function ParadaDetailScreen() {
             <Text style={styles.sectionCount}>{pickedUpBarrels.length} recogidos</Text>
           </View>
 
+          {pickedUpBarrels.map(b => (
+            <View key={b.id} style={styles.barrelRow}>
+              <CheckCircle2 size={16} color={theme.textSecondary} />
+              <Text style={styles.barrelId}>{b.barrel?.id ?? b.barrelId}</Text>
+              <Text style={styles.barrelProduct}>{b.product}</Text>
+            </View>
+          ))}
+
           <TouchableOpacity
             style={styles.pickupBtn}
-            onPress={() => {
-              setScanMode('recogida_vacio')
-              setScannerVisible(true)
-            }}
+            onPress={() => { setScanMode('recogida_vacio'); setScannerVisible(true) }}
           >
             <ScanLine size={18} color={theme.text} />
             <Text style={styles.pickupBtnText}>Escanear vacío</Text>
@@ -313,9 +361,9 @@ export default function ParadaDetailScreen() {
       {/* Sticky bottom: Completar Parada */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[styles.completarBtn, !allConfirmed && styles.completarBtnDisabled]}
+          style={[styles.completarBtn, !allDelivered && styles.completarBtnDisabled]}
           onPress={completarParada}
-          disabled={!allConfirmed || confirming}
+          disabled={!allDelivered || confirming}
           activeOpacity={0.8}
         >
           {confirming
@@ -417,6 +465,28 @@ const styles = StyleSheet.create({
   },
   gpsText: { fontSize: 12 },
   scroll: { padding: spacing.md, paddingBottom: 120 },
+  progressCard: {
+    backgroundColor: theme.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  progressLabel: { color: theme.textSecondary, fontSize: 13 },
+  progressCount: { color: theme.text, fontSize: 13, fontWeight: '600' },
+  progressTrack: {
+    height: 6,
+    backgroundColor: theme.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 6,
+    backgroundColor: theme.amber,
+    borderRadius: 3,
+  },
   section: {
     backgroundColor: theme.card,
     borderRadius: radius.md,
@@ -435,6 +505,47 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { flex: 1, color: theme.text, fontWeight: '600', fontSize: 14 },
   sectionCount: { color: theme.textSecondary, fontSize: 13 },
+  reqRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  reqIcon: { width: 24, alignItems: 'center' },
+  reqProduct: { color: theme.text, fontSize: 14, fontWeight: '500', marginBottom: 6 },
+  reqProgressTrack: {
+    height: 4,
+    backgroundColor: theme.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  reqProgressFill: {
+    height: 4,
+    backgroundColor: theme.amber,
+    borderRadius: 2,
+  },
+  reqProgressDone: { backgroundColor: '#22c55e' },
+  reqCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.textSecondary,
+    minWidth: 36,
+    textAlign: 'right',
+  },
+  reqCountDone: { color: '#22c55e' },
+  scanDeliverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    margin: spacing.md,
+    padding: spacing.md,
+    backgroundColor: theme.amber,
+    borderRadius: radius.sm,
+  },
+  scanDeliverBtnText: { color: '#000', fontWeight: 'bold', fontSize: 15 },
   barrelRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -443,18 +554,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
-  barrelId: { color: theme.text, fontSize: 14, fontWeight: '500' },
-  barrelIdDone: { color: theme.textSecondary, textDecorationLine: 'line-through' },
-  barrelProduct: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },
-  scanBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.sm,
-    backgroundColor: theme.amber,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-  },
+  barrelId: { color: theme.text, fontSize: 14, fontWeight: '500', flex: 1 },
+  barrelProduct: { color: theme.textSecondary, fontSize: 12 },
   emptySection: {
     color: theme.textSecondary,
     fontSize: 13,
@@ -466,10 +567,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     padding: spacing.md,
+    margin: spacing.md,
     borderWidth: 1,
     borderColor: theme.border,
     borderRadius: radius.sm,
-    margin: spacing.md,
   },
   pickupBtnText: { color: theme.text, fontWeight: '600', fontSize: 14 },
   novedadBtn: {
@@ -503,7 +604,6 @@ const styles = StyleSheet.create({
   },
   completarBtnDisabled: { opacity: 0.35 },
   completarBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  // Novedad modal
   novedadOverlay: {
     flex: 1,
     justifyContent: 'flex-end',

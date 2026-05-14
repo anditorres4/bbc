@@ -92,11 +92,19 @@ export interface DeliveryPoint {
   createdAt: string
 }
 
+export interface RouteStopRequirement {
+  id: string
+  routeStopId: string
+  product: string
+  quantity: number
+}
+
 export interface RouteStopBarrel {
   id: string
   barrelId: string
   product: string
   status: string
+  deliveredAt: string | null
   barrel?: Pick<Barrel, 'id' | 'qrCode'>
 }
 
@@ -107,8 +115,10 @@ export interface RouteStop {
   position: number
   status: StopStatus
   barrelsDelivered: number
+  barrelsPickedUp: number
   totalBarrels: number
   deliveryPoint?: DeliveryPoint
+  requirements?: RouteStopRequirement[]
   barrels?: RouteStopBarrel[]
 }
 

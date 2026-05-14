@@ -11,10 +11,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { User, DeliveryPoint, PaginatedResponse, Barrel } from '@/lib/types'
+import type { User, DeliveryPoint, PaginatedResponse } from '@/lib/types'
 
-interface BarrelEntry { barrelId: string; product: string }
-interface StopEntry { deliveryPointId: string; position: number; barrels: BarrelEntry[] }
+interface RequirementEntry { product: string; quantity: number }
+interface StopEntry { deliveryPointId: string; position: number; requirements: RequirementEntry[] }
 interface FormData {
   name: string
   date: string
@@ -37,11 +37,6 @@ export default function NuevaRutaPage() {
     queryFn: () => api.get<{ data: DeliveryPoint[] }>('/api/puntos'),
   })
 
-  const { data: barriles } = useQuery({
-    queryKey: ['barrels', 'bodega'],
-    queryFn: () => api.get<PaginatedResponse<Barrel>>('/api/barriles?status=EN_BODEGA&pageSize=200'),
-  })
-
   const {
     register,
     handleSubmit,
@@ -52,7 +47,7 @@ export default function NuevaRutaPage() {
   } = useForm<FormData>({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
-      stops: [{ deliveryPointId: '', position: 1, barrels: [{ barrelId: '', product: '' }] }],
+      stops: [{ deliveryPointId: '', position: 1, requirements: [{ product: '', quantity: 1 }] }],
     },
   })
 
@@ -69,7 +64,7 @@ export default function NuevaRutaPage() {
         stops: data.stops.map((s, i) => ({
           ...s,
           position: i + 1,
-          barrels: s.barrels.filter(b => b.barrelId && b.product),
+          requirements: s.requirements.filter(r => r.product.trim() && r.quantity > 0),
         })),
       }
       const res = await api.post<{ data: { id: string } }>('/api/rutas', payload)
@@ -133,7 +128,7 @@ export default function NuevaRutaPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => addStop({ deliveryPointId: '', position: stops.length + 1, barrels: [{ barrelId: '', product: '' }] })}
+                onClick={() => addStop({ deliveryPointId: '', position: stops.length + 1, requirements: [{ product: '', quantity: 1 }] })}
               >
                 <Plus className="h-4 w-4" />
                 Agregar parada
@@ -166,49 +161,49 @@ export default function NuevaRutaPage() {
                   </Select>
                 </div>
 
-                {/* Barrels */}
+                {/* Requirements */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>Barriles</Label>
+                    <Label>Requerimientos</Label>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        const current = watch(`stops.${stopIdx}.barrels`) ?? []
-                        setValue(`stops.${stopIdx}.barrels`, [...current, { barrelId: '', product: '' }])
+                        const current = watch(`stops.${stopIdx}.requirements`) ?? []
+                        setValue(`stops.${stopIdx}.requirements`, [...current, { product: '', quantity: 1 }])
                       }}
                     >
                       <Plus className="h-3 w-3" />
-                      Agregar barril
+                      Agregar
                     </Button>
                   </div>
-                  {(watch(`stops.${stopIdx}.barrels`) ?? []).map((_, barrelIdx) => (
-                    <div key={barrelIdx} className="flex gap-2">
-                      <Select onValueChange={v => setValue(`stops.${stopIdx}.barrels.${barrelIdx}.barrelId`, v)}>
-                        <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Seleccionar barril" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {barriles?.items?.map(b => (
-                            <SelectItem key={b.id} value={b.id}>
-                              {b.id} {b.product ? `— ${b.product}` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  <div className="rounded-md bg-stone-50 px-3 py-2 text-xs text-stone-500">
+                    Especifica qué productos y cuántos barriles necesita cada punto
+                  </div>
+                  {(watch(`stops.${stopIdx}.requirements`) ?? []).map((_, reqIdx) => (
+                    <div key={reqIdx} className="flex gap-2 items-center">
                       <Input
-                        placeholder="Producto"
-                        className="w-36"
-                        {...register(`stops.${stopIdx}.barrels.${barrelIdx}.product`)}
+                        placeholder="Producto (ej: Monserrate Negra)"
+                        className="flex-1"
+                        {...register(`stops.${stopIdx}.requirements.${reqIdx}.product`)}
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="Cant."
+                        className="w-20"
+                        {...register(`stops.${stopIdx}.requirements.${reqIdx}.quantity`, { valueAsNumber: true })}
                       />
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          const current = watch(`stops.${stopIdx}.barrels`)
-                          setValue(`stops.${stopIdx}.barrels`, current.filter((_, j) => j !== barrelIdx))
+                          const current = watch(`stops.${stopIdx}.requirements`)
+                          if (current.length > 1) {
+                            setValue(`stops.${stopIdx}.requirements`, current.filter((_, j) => j !== reqIdx))
+                          }
                         }}
                       >
                         <Trash2 className="h-4 w-4 text-stone-400" />
