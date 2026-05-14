@@ -58,16 +58,18 @@ function WebCameraView({
     let active = true
     let lastScan = 0
     const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
 
     function tick() {
       if (!active) return
       const video = videoRef.current
       const now = Date.now()
-      if (ctx && video && video.readyState >= 2 && video.videoWidth > 0 && now - lastScan > 400) {
+      if (ctx && video && video.readyState >= 2 && video.videoWidth > 0 && now - lastScan > 150) {
         lastScan = now
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
+        // Scale down to ~400px wide — sufficient for QR, much faster for jsQR
+        const scale = Math.min(1, 400 / video.videoWidth)
+        canvas.width = Math.round(video.videoWidth * scale)
+        canvas.height = Math.round(video.videoHeight * scale)
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
         const code = jsQR(imageData.data, imageData.width, imageData.height, {
@@ -102,9 +104,10 @@ interface Props {
   context: ScannerContext
   onResult: (result: BarrelScanResult, action: string) => void
   onClose: () => void
+  autoConfirm?: boolean
 }
 
-export function QRScanner({ context, onResult, onClose }: Props) {
+export function QRScanner({ context, onResult, onClose, autoConfirm = false }: Props) {
   const [permission, requestPermission] = useCameraPermissions()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<BarrelScanResult | null>(null)
@@ -112,6 +115,7 @@ export function QRScanner({ context, onResult, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [showManual, setShowManual] = useState(false)
   const [facing, setFacing] = useState<'front' | 'back'>('back')
+  const [scanSuccess, setScanSuccess] = useState<string | null>(null)
 
   const lastScanRef = useRef<number>(0)
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current
@@ -157,13 +161,28 @@ export function QRScanner({ context, onResult, onClose }: Props) {
     }).start(() => setResult(null))
   }
 
+  const primaryAction =
+    context === 'alistamiento' ? 'mark' :
+    context === 'recepcion' ? 'recibir' :
+    context === 'entrega' ? 'entregar' :
+    context === 'recogida_vacio' ? 'recoger' : 'cancel'
+
   async function processQrCode(qrCode: string) {
     setError(null)
     setLoading(true)
     try {
       const data = await api.post<BarrelScanResult>('/api/barriles/scan', { qrCode })
-      setResult(data)
-      showSheet()
+      if (autoConfirm) {
+        onResult(data, primaryAction)
+        setScanSuccess(data.barrel.id)
+        setTimeout(() => {
+          setScanSuccess(null)
+          lastScanRef.current = 0
+        }, 1500)
+      } else {
+        setResult(data)
+        showSheet()
+      }
     } catch (err) {
       if (err instanceof OfflineError) {
         setError('Sin conexión — reintenta cuando haya red')
@@ -354,6 +373,12 @@ export function QRScanner({ context, onResult, onClose }: Props) {
         <X size={22} color={theme.text} />
       </TouchableOpacity>
 
+      {scanSuccess && (
+        <View style={styles.successBanner}>
+          <Text style={styles.successText}>✓ {scanSuccess} escaneado</Text>
+        </View>
+      )}
+
       {result && (
         <Animated.View
           style={[styles.sheet, { transform: [{ translateY: sheetAnim }] }]}
@@ -536,6 +561,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   manualBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  successBanner: {
+    position: 'absolute',
+    bottom: 200,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(34,197,94,0.93)',
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  successText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   permCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   permText: { color: theme.text, fontSize: 15, textAlign: 'center', paddingHorizontal: 32 },
   permButton: {

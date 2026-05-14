@@ -90,6 +90,14 @@ export default function AlistamientoDetailScreen() {
     return true
   }, [required, scannedByProduct])
 
+  // Auto-close scanner once all requirements are satisfied
+  useEffect(() => {
+    if (allRequirementsMet && scannerVisible) {
+      const t = setTimeout(() => setScannerVisible(false), 1600)
+      return () => clearTimeout(t)
+    }
+  }, [allRequirementsMet, scannerVisible])
+
   const totalRequired = useMemo(
     () => Array.from(required.values()).reduce((s, n) => s + n, 0),
     [required]
@@ -126,7 +134,7 @@ export default function AlistamientoDetailScreen() {
 
     setScannedBarrels(prev => new Map(prev).set(barrelId, product))
     incrementSessionCount()
-    setScannerVisible(false)
+    // Scanner stays open — closed automatically when all requirements are met
   }
 
   async function confirmSalida() {
@@ -258,6 +266,7 @@ export default function AlistamientoDetailScreen() {
           context="alistamiento"
           onResult={handleScanResult}
           onClose={() => setScannerVisible(false)}
+          autoConfirm
         />
       </Modal>
     </SafeAreaView>
