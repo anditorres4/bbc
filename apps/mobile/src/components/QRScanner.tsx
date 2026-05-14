@@ -36,6 +36,7 @@ export function QRScanner({ context, onResult, onClose }: Props) {
   const [result, setResult] = useState<BarrelScanResult | null>(null)
   const [webInput, setWebInput] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [showManual, setShowManual] = useState(false)
 
   const lastScanRef = useRef<number>(0)
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current
@@ -157,11 +158,9 @@ export function QRScanner({ context, onResult, onClose }: Props) {
         ]
       : [{ label: 'Cerrar', action: 'cancel' }]
 
-  const isWeb = Platform.OS === 'web'
-
   return (
     <View style={styles.container}>
-      {isWeb ? (
+      {showManual ? (
         <View style={styles.webFallback}>
           <Text style={styles.webTitle}>Ingresar código QR</Text>
           <TextInput
@@ -172,6 +171,7 @@ export function QRScanner({ context, onResult, onClose }: Props) {
             placeholderTextColor={theme.textSecondary}
             autoCapitalize="none"
             onSubmitEditing={handleWebSearch}
+            autoFocus
           />
           <TouchableOpacity
             style={styles.webButton}
@@ -184,6 +184,9 @@ export function QRScanner({ context, onResult, onClose }: Props) {
             }
           </TouchableOpacity>
           {error && <Text style={styles.errorText}>{error}</Text>}
+          <TouchableOpacity style={styles.switchModeBtn} onPress={() => { setShowManual(false); setError(null) }}>
+            <Text style={styles.switchModeText}>← Usar cámara</Text>
+          </TouchableOpacity>
         </View>
       ) : !permission ? (
         <View style={styles.permCenter}>
@@ -224,6 +227,10 @@ export function QRScanner({ context, onResult, onClose }: Props) {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
+
+          <TouchableOpacity style={styles.manualBtn} onPress={() => { setShowManual(true); setError(null) }}>
+            <Text style={styles.manualBtnText}>Ingresar manualmente</Text>
+          </TouchableOpacity>
         </>
       )}
 
@@ -386,6 +393,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   webButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
+  switchModeBtn: { marginTop: spacing.lg, alignItems: 'center' },
+  switchModeText: { color: theme.textSecondary, fontSize: 14 },
+  manualBtn: {
+    position: 'absolute',
+    bottom: 32,
+    left: 20,
+    right: 20,
+    height: 44,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manualBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   permCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   permText: { color: theme.text, fontSize: 15, textAlign: 'center', paddingHorizontal: 32 },
   permButton: {
