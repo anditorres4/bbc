@@ -4,34 +4,12 @@ import { Tabs } from 'expo-router'
 import { Home, ScanLine, Bell } from 'lucide-react-native'
 import * as Haptics from 'expo-haptics'
 import { theme, spacing } from '@/lib/theme'
-import { useNetworkState } from '@/lib/network'
-import { drainQueue, queueSize } from '@/lib/offline'
 import { getAccessToken } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { NetworkStatusBar } from '@/components/NetworkStatusBar'
 import type { Alert, PaginatedResponse } from '@/lib/types'
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000'
-
-function NetworkDrainer() {
-  const { isConnected, setStatus } = useNetworkState()
-  const wasPreviouslyOffline = useRef(false)
-
-  useEffect(() => {
-    if (!isConnected) {
-      wasPreviouslyOffline.current = true
-      return
-    }
-    if (wasPreviouslyOffline.current && queueSize() > 0) {
-      wasPreviouslyOffline.current = false
-      setStatus('syncing')
-      drainQueue().finally(() => setStatus('online'))
-    } else {
-      wasPreviouslyOffline.current = false
-    }
-  }, [isConnected, setStatus])
-
-  return null
-}
 
 export default function BodegaLayout() {
   const [criticalMsg, setCriticalMsg] = useState<string | null>(null)
@@ -136,7 +114,7 @@ export default function BodegaLayout() {
 
   return (
     <View style={{ flex: 1 }}>
-      <NetworkDrainer />
+      <NetworkStatusBar />
       <Tabs
         screenOptions={{
           headerShown: false,

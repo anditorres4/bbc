@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics'
 import { theme, spacing } from '@/lib/theme'
 import { getAccessToken } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { NetworkStatusBar } from '@/components/NetworkStatusBar'
 import type { Alert, PaginatedResponse } from '@/lib/types'
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000'
@@ -114,6 +115,7 @@ export default function TransportistaLayout() {
 
   return (
     <View style={{ flex: 1 }}>
+      <NetworkStatusBar />
       <Tabs
         screenOptions={{
           headerShown: false,

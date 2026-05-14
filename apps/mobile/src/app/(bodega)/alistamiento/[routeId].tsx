@@ -10,8 +10,9 @@ import {
   ArrowLeft, ScanLine, ChevronDown, ChevronRight,
   CheckCircle2, Circle,
 } from 'lucide-react-native'
-import { api, OfflineError } from '@/lib/api'
-import { enqueue, incrementSessionCount } from '@/lib/offline'
+import { api } from '@/lib/api'
+import { incrementSessionCount } from '@/lib/offline'
+import { apiCall } from '@/lib/apiWithOffline'
 import { QRScanner } from '@/components/QRScanner'
 import { theme, spacing, radius } from '@/lib/theme'
 import type { Route, RouteStopBarrel, RouteStop, BarrelScanResult } from '@/lib/types'
@@ -126,19 +127,14 @@ export default function AlistamientoDetailScreen() {
   async function confirmSalida() {
     if (!route || confirming) return
     setConfirming(true)
-    try {
-      await api.post(`/api/rutas/${route.id}/iniciar`)
-      router.back()
-    } catch (err) {
-      if (err instanceof OfflineError) {
-        enqueue(`/api/rutas/${route.id}/iniciar`, 'POST', {})
-        router.back()
-      } else {
-        const e = err as { message?: string }
-        showToast(e?.message ?? 'Error al confirmar salida')
-      }
-    } finally {
+    const res = await apiCall(`/api/rutas/${route.id}/iniciar`, 'POST', {})
+    if (res.error) {
+      showToast(res.error)
       setConfirming(false)
+    } else {
+      // queued or success — operator can proceed
+      if (res.queued) showToast('Sin conexión — se enviará al reconectar')
+      router.back()
     }
   }
 

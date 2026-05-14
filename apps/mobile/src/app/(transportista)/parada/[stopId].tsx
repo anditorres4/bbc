@@ -10,7 +10,8 @@ import {
   ArrowLeft, MapPin, Package, RefreshCw, ScanLine,
   CheckCircle2, Circle, AlertTriangle,
 } from 'lucide-react-native'
-import { api, OfflineError } from '@/lib/api'
+import { api } from '@/lib/api'
+import { apiCall } from '@/lib/apiWithOffline'
 import { QRScanner } from '@/components/QRScanner'
 import { BarrelStatusBadge } from '@/components/BarrelStatusBadge'
 import { theme, spacing, radius } from '@/lib/theme'
@@ -108,54 +109,67 @@ export default function ParadaDetailScreen() {
       return
     }
 
-    try {
-      if (scanMode === 'entrega' && action === 'entregar') {
-        const inStop = stop?.barrels?.some(b => b.barrelId === result.barrel.id)
-        if (!inStop) {
-          showToast('Este barril no está asignado a este punto')
-          setScannerVisible(false)
-          return
-        }
-        await api.post(`/api/rutas/${routeId}/stops/${stopId}/entregar`, {
-          barrelIds: [result.barrel.id],
-          lat: gps?.lat ?? null,
-          lng: gps?.lng ?? null,
-        })
-      } else if (scanMode === 'recogida_vacio' && action === 'recoger') {
-        await api.post(`/api/rutas/${routeId}/stops/${stopId}/recoger`, {
-          barrelId: result.barrel.id,
-          lat: gps?.lat ?? null,
-          lng: gps?.lng ?? null,
-        })
+    if (scanMode === 'entrega' && action === 'entregar') {
+      const inStop = stop?.barrels?.some(b => b.barrelId === result.barrel.id)
+      if (!inStop) {
+        showToast('Este barril no está asignado a este punto')
+        setScannerVisible(false)
+        return
       }
-      setScannerVisible(false)
-      await loadStop(true)
-    } catch (err) {
-      if (err instanceof OfflineError) {
-        showToast('Sin conexión — intenta cuando haya red')
+      const res = await apiCall(`/api/rutas/${routeId}/stops/${stopId}/entregar`, 'POST', {
+        barrelIds: [result.barrel.id],
+        lat: gps?.lat ?? null,
+        lng: gps?.lng ?? null,
+      })
+      if (res.queued) {
+        showToast('Guardado localmente — se enviará al reconectar')
+        setStop(prev => prev ? {
+          ...prev,
+          barrels: prev.barrels?.map(b =>
+            b.barrelId === result.barrel.id ? { ...b, status: 'ENTREGADO' } : b
+          ),
+        } : prev)
+      } else if (res.error) {
+        showToast(res.error)
       } else {
-        const e = err as { message?: string }
-        showToast(e?.message ?? 'Error al registrar')
+        await loadStop(true)
       }
-      setScannerVisible(false)
+    } else if (scanMode === 'recogida_vacio' && action === 'recoger') {
+      const res = await apiCall(`/api/rutas/${routeId}/stops/${stopId}/recoger`, 'POST', {
+        barrelId: result.barrel.id,
+        lat: gps?.lat ?? null,
+        lng: gps?.lng ?? null,
+      })
+      if (res.queued) {
+        showToast('Guardado localmente — se enviará al reconectar')
+      } else if (res.error) {
+        showToast(res.error)
+      } else {
+        await loadStop(true)
+      }
     }
+
+    setScannerVisible(false)
   }
 
   async function submitNovedad() {
     if (!novedadText.trim() || novedadLoading) return
     setNovedadLoading(true)
     try {
-      await api.post(`/api/rutas/${routeId}/stops/${stopId}/novedad`, {
+      const res = await apiCall(`/api/rutas/${routeId}/stops/${stopId}/novedad`, 'POST', {
         description: novedadText.trim(),
         lat: gps?.lat ?? null,
         lng: gps?.lng ?? null,
       })
       setNovedadVisible(false)
       setNovedadText('')
-      await loadStop(true)
-    } catch (err) {
-      const e = err as { message?: string }
-      showToast(e?.message ?? 'Error al registrar novedad')
+      if (res.queued) {
+        showToast('Novedad guardada localmente — se enviará al reconectar')
+      } else if (res.error) {
+        showToast(res.error)
+      } else {
+        await loadStop(true)
+      }
     } finally {
       setNovedadLoading(false)
     }
