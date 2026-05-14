@@ -5,7 +5,7 @@ import {
 } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as Haptics from 'expo-haptics'
-import { X } from 'lucide-react-native'
+import { X, RefreshCw } from 'lucide-react-native'
 import { api, OfflineError } from '@/lib/api'
 import { BarrelStatusBadge } from './BarrelStatusBadge'
 import { theme, spacing, radius } from '@/lib/theme'
@@ -37,6 +37,7 @@ export function QRScanner({ context, onResult, onClose }: Props) {
   const [webInput, setWebInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [showManual, setShowManual] = useState(false)
+  const [facing, setFacing] = useState<'front' | 'back'>('back')
 
   const lastScanRef = useRef<number>(0)
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current
@@ -203,7 +204,7 @@ export function QRScanner({ context, onResult, onClose }: Props) {
         <>
           <CameraView
             style={StyleSheet.absoluteFill}
-            facing="back"
+            facing={facing}
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
             onBarcodeScanned={loading ? undefined : handleBarCodeScanned}
           />
@@ -227,6 +228,10 @@ export function QRScanner({ context, onResult, onClose }: Props) {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
+
+          <TouchableOpacity style={styles.flipBtn} onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}>
+            <RefreshCw size={20} color="#fff" />
+          </TouchableOpacity>
 
           <TouchableOpacity style={styles.manualBtn} onPress={() => { setShowManual(true); setError(null) }}>
             <Text style={styles.manualBtnText}>Ingresar manualmente</Text>
@@ -395,6 +400,17 @@ const styles = StyleSheet.create({
   webButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
   switchModeBtn: { marginTop: spacing.lg, alignItems: 'center' },
   switchModeText: { color: theme.textSecondary, fontSize: 14 },
+  flipBtn: {
+    position: 'absolute',
+    top: 52,
+    left: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   manualBtn: {
     position: 'absolute',
     bottom: 32,
