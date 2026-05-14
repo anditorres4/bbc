@@ -120,6 +120,17 @@ async function main() {
   })
   console.log('Delivery points created (5 Bogota locations)')
 
+  // ── Cleanup existing transactional data ───────────────────────────────────
+  await prisma.alert.deleteMany({})
+  await prisma.barrelEvent.deleteMany({})
+  await prisma.routeStopBarrel.deleteMany({})
+  await prisma.routeStopRequirement.deleteMany({})
+  await prisma.routeBarrel.deleteMany({})
+  await prisma.routeStop.deleteMany({})
+  await prisma.route.deleteMany({})
+  await prisma.barrel.deleteMany({})
+  console.log('Existing data cleared')
+
   // ── Barrels ────────────────────────────────────────────────────────────────
   // Reset sequence so IDs are BBC-001 to BBC-020 in insertion order.
 
@@ -289,14 +300,13 @@ async function main() {
 
   // ── Demo route ─────────────────────────────────────────────────────────────
 
-  const tomorrow = new Date()
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  tomorrow.setHours(8, 0, 0, 0)
+  const today = new Date()
+  today.setHours(8, 0, 0, 0)
 
   const route = await prisma.route.create({
     data: {
       name: 'Ruta Norte - Demo',
-      date: tomorrow,
+      date: today,
       status: 'PLANIFICADA',
       transportistId: trans1.id,
       vehiclePlate: 'ABC-123',
@@ -330,7 +340,7 @@ async function main() {
       },
     },
   })
-  console.log(`Demo route created: "${route.name}" for ${tomorrow.toLocaleDateString('es-CO')}`)
+  console.log(`Demo route created: "${route.name}" for ${today.toLocaleDateString('es-CO')}`)
 
   // ── Pre-existing alerts ────────────────────────────────────────────────────
 
