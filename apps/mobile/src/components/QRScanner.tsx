@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Animated, Platform, ActivityIndicator,
@@ -15,6 +15,83 @@ const SCAN_WINDOW = 260
 const SHEET_HEIGHT = 320
 const COOLDOWN_MS = 2000
 const BBC_QR_RE = /^BBC-\d{3,5}$/
+
+// Web-only camera: uses getUserMedia (back camera) + BarcodeDetector for QR scanning.
+// expo-camera ignores the `facing` prop on web, so we use browser APIs directly.
+function WebCameraView({
+  facingMode,
+  onBarcodeScanned,
+  enabled,
+}: {
+  facingMode: 'environment' | 'user'
+  onBarcodeScanned: (data: string) => void
+  enabled: boolean
+}) {
+  const videoRef = useRef<any>(null)
+  const streamRef = useRef<any>(null)
+  const rafRef = useRef<number>(0)
+  const detectorRef = useRef<any>(null)
+  const callbackRef = useRef(onBarcodeScanned)
+
+  useEffect(() => { callbackRef.current = onBarcodeScanned }, [onBarcodeScanned])
+
+  useEffect(() => {
+    let mounted = true
+    ;(navigator as any).mediaDevices
+      .getUserMedia({ video: { facingMode: { ideal: facingMode } } })
+      .then((stream: any) => {
+        if (!mounted) { stream.getTracks().forEach((t: any) => t.stop()); return }
+        streamRef.current = stream
+        if (videoRef.current) videoRef.current.srcObject = stream
+        if ('BarcodeDetector' in window) {
+          detectorRef.current = new (window as any).BarcodeDetector({ formats: ['qr_code'] })
+        }
+      })
+      .catch((err: any) => console.warn('WebCameraView error:', err))
+    return () => {
+      mounted = false
+      streamRef.current?.getTracks().forEach((t: any) => t.stop())
+      cancelAnimationFrame(rafRef.current)
+    }
+  }, [facingMode])
+
+  useEffect(() => {
+    if (!enabled) { cancelAnimationFrame(rafRef.current); return }
+    let active = true
+    let lastScan = 0
+    let scanning = false
+    function tick() {
+      if (!active) return
+      const now = Date.now()
+      if (
+        !scanning &&
+        detectorRef.current &&
+        videoRef.current &&
+        videoRef.current.readyState >= 2 &&
+        now - lastScan > 500
+      ) {
+        lastScan = now
+        scanning = true
+        detectorRef.current
+          .detect(videoRef.current)
+          .then((codes: any[]) => { if (codes.length > 0 && active) callbackRef.current(codes[0].rawValue) })
+          .catch(() => {})
+          .finally(() => { scanning = false })
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { active = false; cancelAnimationFrame(rafRef.current) }
+  }, [enabled])
+
+  return React.createElement('video', {
+    ref: videoRef,
+    autoPlay: true,
+    playsInline: true,
+    muted: true,
+    style: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' },
+  })
+}
 
 export type ScannerContext =
   | 'alistamiento'
@@ -189,6 +266,43 @@ export function QRScanner({ context, onResult, onClose }: Props) {
             <Text style={styles.switchModeText}>← Usar cámara</Text>
           </TouchableOpacity>
         </View>
+      ) : Platform.OS === 'web' ? (
+        <>
+          <WebCameraView
+            key={facing}
+            facingMode={facing === 'back' ? 'environment' : 'user'}
+            onBarcodeScanned={(data) => handleBarCodeScanned({ data })}
+            enabled={!loading}
+          />
+
+          <View style={styles.overlay} pointerEvents="none">
+            <View style={styles.maskTop} />
+            <View style={styles.middleRow}>
+              <View style={styles.maskSide} />
+              <View style={styles.scanWindow}>
+                <Animated.View
+                  style={[styles.scanLine, { transform: [{ translateY: scanLineY }] }]}
+                />
+              </View>
+              <View style={styles.maskSide} />
+            </View>
+            <View style={styles.maskBottom} />
+          </View>
+
+          {error && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.flipBtn} onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}>
+            <RefreshCw size={20} color="#fff" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.manualBtn} onPress={() => { setShowManual(true); setError(null) }}>
+            <Text style={styles.manualBtnText}>Ingresar manualmente</Text>
+          </TouchableOpacity>
+        </>
       ) : !permission ? (
         <View style={styles.permCenter}>
           <ActivityIndicator color={theme.amber} />
