@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import jsQR from 'jsqr'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Animated, Platform, ActivityIndicator,
@@ -16,8 +17,9 @@ const SHEET_HEIGHT = 320
 const COOLDOWN_MS = 2000
 const BBC_QR_RE = /^BBC-\d{3,5}$/
 
-// Web-only camera: uses getUserMedia (back camera) + BarcodeDetector for QR scanning.
+// Web-only camera: uses getUserMedia (back camera) + jsQR for QR scanning.
 // expo-camera ignores the `facing` prop on web, so we use browser APIs directly.
+// jsQR is used via canvas frame extraction — works in any browser.
 function WebCameraView({
   facingMode,
   onBarcodeScanned,
@@ -30,7 +32,6 @@ function WebCameraView({
   const videoRef = useRef<any>(null)
   const streamRef = useRef<any>(null)
   const rafRef = useRef<number>(0)
-  const detectorRef = useRef<any>(null)
   const callbackRef = useRef(onBarcodeScanned)
 
   useEffect(() => { callbackRef.current = onBarcodeScanned }, [onBarcodeScanned])
@@ -38,14 +39,11 @@ function WebCameraView({
   useEffect(() => {
     let mounted = true
     ;(navigator as any).mediaDevices
-      .getUserMedia({ video: { facingMode: { ideal: facingMode } } })
+      .getUserMedia({ video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } } })
       .then((stream: any) => {
         if (!mounted) { stream.getTracks().forEach((t: any) => t.stop()); return }
         streamRef.current = stream
         if (videoRef.current) videoRef.current.srcObject = stream
-        if ('BarcodeDetector' in window) {
-          detectorRef.current = new (window as any).BarcodeDetector({ formats: ['qr_code'] })
-        }
       })
       .catch((err: any) => console.warn('WebCameraView error:', err))
     return () => {
@@ -59,24 +57,23 @@ function WebCameraView({
     if (!enabled) { cancelAnimationFrame(rafRef.current); return }
     let active = true
     let lastScan = 0
-    let scanning = false
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+
     function tick() {
       if (!active) return
+      const video = videoRef.current
       const now = Date.now()
-      if (
-        !scanning &&
-        detectorRef.current &&
-        videoRef.current &&
-        videoRef.current.readyState >= 2 &&
-        now - lastScan > 500
-      ) {
+      if (ctx && video && video.readyState >= 2 && video.videoWidth > 0 && now - lastScan > 400) {
         lastScan = now
-        scanning = true
-        detectorRef.current
-          .detect(videoRef.current)
-          .then((codes: any[]) => { if (codes.length > 0 && active) callbackRef.current(codes[0].rawValue) })
-          .catch(() => {})
-          .finally(() => { scanning = false })
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'dontInvert',
+        })
+        if (code && active) callbackRef.current(code.data)
       }
       rafRef.current = requestAnimationFrame(tick)
     }
