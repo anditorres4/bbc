@@ -6,8 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { FlashList } from '@shopify/flash-list'
-import { MapPin, CheckCircle2, RefreshCw } from 'lucide-react-native'
+import { MapPin, CheckCircle2, RefreshCw, LogOut } from 'lucide-react-native'
 import { api } from '@/lib/api'
+import { getRefreshToken, clearTokens } from '@/lib/auth'
 import { theme, spacing, radius } from '@/lib/theme'
 import type { Route } from '@/lib/types'
 
@@ -73,6 +74,15 @@ export default function MiRutaScreen() {
     useCallback(() => { loadRoute(true) }, [])
   )
 
+  async function handleLogout() {
+    try {
+      const refreshToken = await getRefreshToken()
+      if (refreshToken) await api.post('/auth/logout', { refreshToken })
+    } catch { /* ignore */ }
+    await clearTokens()
+    router.replace('/(auth)/login')
+  }
+
   async function iniciarRuta() {
     if (!route || starting) return
     setStarting(true)
@@ -106,8 +116,13 @@ export default function MiRutaScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <MapPin size={20} color={theme.amber} />
-        <Text style={styles.title}>Mi Ruta</Text>
+        <View style={styles.headerLeft}>
+          <MapPin size={20} color={theme.amber} />
+          <Text style={styles.title}>Mi Ruta</Text>
+        </View>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+          <LogOut size={20} color={theme.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       {!route ? (
@@ -257,11 +272,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
     padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  logoutBtn: { padding: 4 },
   title: { fontSize: 20, fontWeight: 'bold', color: theme.text },
   emptyState: {
     flex: 1,

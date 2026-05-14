@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
+import { useFocusEffect } from 'expo-router'
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, RefreshControl,
@@ -46,7 +47,7 @@ export default function AlertasTransportista() {
     }
   }
 
-  useEffect(() => { fetchAlerts() }, [])
+  useFocusEffect(useCallback(() => { fetchAlerts() }, []))
 
   const onRefresh = useCallback(() => {
     setRefreshing(true)

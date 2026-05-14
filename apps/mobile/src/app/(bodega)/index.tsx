@@ -5,12 +5,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter, useFocusEffect } from 'expo-router'
 import {
-  ClipboardList, PackageCheck, ScanLine, Bell,
+  ClipboardList, PackageCheck, ScanLine, Bell, LogOut,
 } from 'lucide-react-native'
 import { theme, spacing, radius } from '@/lib/theme'
 import { useNetworkState } from '@/lib/network'
 import { NetworkDot } from '@/components/NetworkDot'
-import { getStoredUser } from '@/lib/auth'
+import { getStoredUser, getRefreshToken, clearTokens } from '@/lib/auth'
+import { api } from '@/lib/api'
 import { getSessionCount } from '@/lib/offline'
 import type { User } from '@/lib/types'
 
@@ -36,6 +37,15 @@ export default function HomeScreen() {
       setSessionCount(getSessionCount())
     }, [])
   )
+
+  async function handleLogout() {
+    try {
+      const refreshToken = await getRefreshToken()
+      if (refreshToken) await api.post('/auth/logout', { refreshToken })
+    } catch { /* ignore */ }
+    await clearTokens()
+    router.replace('/(auth)/login')
+  }
 
   const cards: ActionCard[] = [
     {
@@ -68,7 +78,12 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Hola,</Text>
             <Text style={styles.name}>{user?.name ?? '...'}</Text>
           </View>
-          <NetworkDot status={status} />
+          <View style={styles.headerRight}>
+            <NetworkDot status={status} />
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+              <LogOut size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.grid}>
@@ -108,6 +123,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  logoutBtn: { padding: 4 },
   greeting: { fontSize: 14, color: theme.textSecondary },
   name: { fontSize: 24, fontWeight: 'bold', color: theme.text },
   grid: {
