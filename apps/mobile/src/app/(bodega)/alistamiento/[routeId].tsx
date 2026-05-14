@@ -105,36 +105,31 @@ export default function AlistamientoDetailScreen() {
   const totalScanned = scannedBarrels.size
   const progress = totalRequired > 0 ? totalScanned / totalRequired : 0
 
-  function handleScanResult(result: BarrelScanResult, action: string) {
+  function handleScanResult(result: BarrelScanResult, action: string): string | void {
     if (action === 'cancel') return
     const barrelId = result.barrel.id
     const product = result.barrel.product ?? ''
 
     if (scannedBarrels.has(barrelId)) {
-      showToast('Este barril ya fue escaneado')
-      return
+      return 'Este barril ya fue escaneado'
     }
 
     if (!product) {
-      showToast('⚠️ Este barril no tiene producto asignado')
-      return
+      return '⚠️ Barril sin producto asignado'
     }
 
     const requiredQty = required.get(product) ?? 0
     if (requiredQty === 0) {
-      showToast(`⚠️ "${product}" no es requerido en esta ruta`)
-      return
+      return `⚠️ "${product}" no requerido en esta ruta`
     }
 
     const alreadyScanned = scannedByProduct.get(product) ?? 0
     if (alreadyScanned >= requiredQty) {
-      showToast(`Ya se escanearon todos los barriles de "${product}"`)
-      return
+      return `Todos los barriles de "${product}" ya escaneados`
     }
 
     setScannedBarrels(prev => new Map(prev).set(barrelId, product))
     incrementSessionCount()
-    // Scanner stays open — closed automatically when all requirements are met
   }
 
   async function confirmSalida() {

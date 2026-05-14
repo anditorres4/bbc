@@ -102,7 +102,7 @@ export type ScannerContext =
 
 interface Props {
   context: ScannerContext
-  onResult: (result: BarrelScanResult, action: string) => void
+  onResult: (result: BarrelScanResult, action: string) => string | void
   onClose: () => void
   autoConfirm?: boolean
 }
@@ -173,17 +173,23 @@ export function QRScanner({ context, onResult, onClose, autoConfirm = false }: P
     try {
       const data = await api.post<BarrelScanResult>('/api/barriles/scan', { qrCode })
       if (autoConfirm) {
-        onResult(data, primaryAction)
-        setScanSuccess(data.barrel.id)
-        setTimeout(() => {
-          setScanSuccess(null)
+        const rejection = onResult(data, primaryAction)
+        if (rejection) {
+          setError(rejection)
           lastScanRef.current = 0
-        }, 1500)
+        } else {
+          setScanSuccess(data.barrel.id)
+          setTimeout(() => {
+            setScanSuccess(null)
+            lastScanRef.current = 0
+          }, 1500)
+        }
       } else {
         setResult(data)
         showSheet()
       }
     } catch (err) {
+      lastScanRef.current = 0
       if (err instanceof OfflineError) {
         setError('Sin conexión — reintenta cuando haya red')
       } else {
