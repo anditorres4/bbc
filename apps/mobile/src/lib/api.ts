@@ -72,6 +72,9 @@ async function request<T>(
     const newToken = await refreshPromise
     if (!newToken) {
       await clearTokens()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('bbc:auth:expired'))
+      }
       throw new AuthError()
     }
     return request<T>(path, method, body, false)

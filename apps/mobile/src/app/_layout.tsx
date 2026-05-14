@@ -27,6 +27,15 @@ export default function RootLayout() {
     checkAuth()
   }, [segments, router])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    function onAuthExpired() {
+      router.replace('/(auth)/login')
+    }
+    window.addEventListener('bbc:auth:expired', onAuthExpired)
+    return () => window.removeEventListener('bbc:auth:expired', onAuthExpired)
+  }, [router])
+
   return (
     <>
       <StatusBar style="light" />
