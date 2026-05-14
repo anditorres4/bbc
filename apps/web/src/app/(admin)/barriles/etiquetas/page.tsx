@@ -22,18 +22,50 @@ function EtiquetasContent() {
 
   const allLoaded = queries.every(q => !q.isLoading)
 
+  function printLabels() {
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Etiquetas BBC</title>
+  <style>
+    @page { margin: 1cm; }
+    body { margin: 0; font-family: Arial, sans-serif; }
+    .grid { display: grid; grid-template-columns: repeat(3, 8cm); gap: 0.4cm; }
+    .label { width: 8cm; height: 8cm; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #ccc; break-inside: avoid; }
+    .label img { width: 6cm; height: 6cm; }
+    .label p { margin: 6px 0 0; font-weight: bold; font-size: 13pt; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    ${ids.map((id, i) => {
+      const data = queries[i]?.data
+      if (!data) return ''
+      return `<div class="label"><img src="${data.qrImage}" alt="${id}"><p>${id}</p></div>`
+    }).join('\n    ')}
+  </div>
+  <script>window.onload = function() { window.print(); }</script>
+</body>
+</html>`
+
+    const win = window.open('', '_blank', 'width=960,height=720')
+    win?.document.write(html)
+    win?.document.close()
+  }
+
   return (
     <div>
-      <div className="mb-6 flex items-center gap-4 print:hidden">
+      <div className="mb-6 flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <h2 className="flex-1 text-xl font-semibold">
           Etiquetas ({ids.length} barril{ids.length !== 1 ? 'es' : ''})
         </h2>
-        <Button onClick={() => window.print()} disabled={!allLoaded}>
+        <Button onClick={printLabels} disabled={!allLoaded}>
           <Printer className="h-4 w-4" />
-          Imprimir
+          Imprimir / Guardar PDF
         </Button>
       </div>
 
