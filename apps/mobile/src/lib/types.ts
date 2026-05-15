@@ -29,8 +29,17 @@ export interface Barrel {
   notes: string | null
 }
 
+export interface BarrelEvent {
+  id: string
+  type: string
+  fromStatus: BarrelStatus | null
+  toStatus: BarrelStatus
+  timestamp: string
+  notes: string | null
+}
+
 export interface BarrelScanResult {
-  barrel: Barrel
+  barrel: Barrel & { events?: BarrelEvent[] }
   created: boolean
 }
 

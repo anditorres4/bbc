@@ -65,6 +65,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     if (path.includes('/rutas')) return 'Rutas'
     if (path.includes('/alertas')) return 'Alertas'
     if (path.includes('/usuarios')) return 'Usuarios'
+    if (path.includes('/reportes')) return 'Reportes'
     return 'BBC Barrel Track'
   })()
 

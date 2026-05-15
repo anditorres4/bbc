@@ -9,6 +9,7 @@ import { rutasRouter } from './rutas/rutas.router'
 import { puntosRouter } from './puntos/puntos.router'
 import { usuariosRouter } from './usuarios/usuarios.router'
 import { alertasRouter } from './alertas/alertas.router'
+import { reportesRouter } from './reportes/reportes.router'
 
 const app: Express = express()
 
@@ -82,5 +83,6 @@ app.use('/api/rutas', rutasRouter)
 app.use('/api/puntos', puntosRouter)
 app.use('/api/usuarios', usuariosRouter)
 app.use('/api/alertas', alertasRouter)
+app.use('/api/reportes', reportesRouter)
 
 export { app }

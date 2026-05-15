@@ -111,7 +111,9 @@ export default function ParadaDetailScreen() {
 
   const allDelivered = (stop?.barrelsDelivered ?? 0) >= (stop?.totalBarrels ?? 1) && (stop?.totalBarrels ?? 0) > 0
 
-  async function handleScanResult(result: BarrelScanResult, action: string) {
+  // Delivery uses autoConfirm: must return string (rejection shown in scanner) or void (success).
+  // Pickup uses the default sheet flow: shows a confirm button, closes after action.
+  async function handleScanResult(result: BarrelScanResult, action: string): Promise<string | void> {
     if (action === 'cancel') {
       setScannerVisible(false)
       return
@@ -124,7 +126,7 @@ export default function ParadaDetailScreen() {
         lng: gps?.lng ?? null,
       })
       if (res.queued) {
-        showToast('Guardado localmente — se enviará al reconectar')
+        // Optimistic update so allDelivered can be computed locally
         setStop(prev => prev ? {
           ...prev,
           barrelsDelivered: prev.barrelsDelivered + 1,
@@ -140,10 +142,12 @@ export default function ParadaDetailScreen() {
             },
           ],
         } : prev)
+        return // void = success, scanner stays open
       } else if (res.error) {
-        showToast(res.error)
+        return res.error // string = rejection shown inside scanner
       } else {
-        await loadStop(true)
+        await loadStop(true) // refresh → allDelivered useEffect auto-closes when done
+        return
       }
     } else if (scanMode === 'recogida_vacio' && action === 'recoger') {
       const res = await apiCall(`/api/rutas/${routeId}/stops/${stopId}/recoger`, 'POST', {
@@ -158,10 +162,17 @@ export default function ParadaDetailScreen() {
       } else {
         await loadStop(true)
       }
+      setScannerVisible(false)
     }
-
-    setScannerVisible(false)
   }
+
+  // Auto-close delivery scanner once all required barrels are delivered
+  useEffect(() => {
+    if (allDelivered && scannerVisible && scanMode === 'entrega') {
+      const t = setTimeout(() => setScannerVisible(false), 1600)
+      return () => clearTimeout(t)
+    }
+  }, [allDelivered, scannerVisible, scanMode])
 
   async function submitNovedad() {
     if (!novedadText.trim() || novedadLoading) return
@@ -375,7 +386,7 @@ export default function ParadaDetailScreen() {
 
       <Toast message={toast} />
 
-      {/* QR Scanner modal */}
+      {/* QR Scanner modal — delivery uses autoConfirm (stays open for next scan) */}
       <Modal
         visible={scannerVisible}
         animationType="slide"
@@ -385,6 +396,7 @@ export default function ParadaDetailScreen() {
           context={scanMode}
           onResult={handleScanResult}
           onClose={() => setScannerVisible(false)}
+          autoConfirm={scanMode === 'entrega'}
         />
       </Modal>
 

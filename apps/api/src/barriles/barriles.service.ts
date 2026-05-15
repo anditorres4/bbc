@@ -1,4 +1,4 @@
-import { BarrelStatus, EventType } from '@prisma/client'
+import { BarrelStatus, BarrelStopStatus, EventType, RouteStatus } from '@prisma/client'
 import { generateQRBase64 } from '../utils/qr'
 import { prisma } from '../db/client'
 import { AppError } from '../common/errors'
@@ -148,7 +148,39 @@ export async function darDeBaja(id: string, userId: string, notes?: string) {
 
 export async function recibirBarril(id: string, userId: string, notes?: string) {
   // State machine enforces EN_RECOGIDA/DEVUELTO → EN_BODEGA; invalid states throw INVALID_TRANSITION
-  return executeTransition(id, BarrelStatus.EN_BODEGA, userId, { notes })
+  const updated = await executeTransition(id, BarrelStatus.EN_BODEGA, userId, { notes })
+
+  // If this barrel was picked up as part of a route, auto-close the route when
+  // all empties from that route have now been received at bodega.
+  const routeLink = await prisma.routeStopBarrel.findFirst({
+    where: { barrelId: id, status: BarrelStopStatus.RECOGIDO_VACIO },
+    include: { routeStop: { select: { routeId: true } } },
+  })
+
+  if (routeLink) {
+    const routeId = routeLink.routeStop.routeId
+    const route = await prisma.route.findUnique({ where: { id: routeId } })
+
+    if (route && (route.status === RouteStatus.EN_CURSO || route.status === RouteStatus.CON_NOVEDAD)) {
+      const allPickedUp = await prisma.routeStopBarrel.findMany({
+        where: { routeStop: { routeId }, status: BarrelStopStatus.RECOGIDO_VACIO },
+        include: { barrel: { select: { status: true } } },
+      })
+
+      // All RECOGIDO_VACIO barrels must now be EN_BODEGA (barrel X was just updated in DB)
+      const allReturned = allPickedUp.length > 0 &&
+        allPickedUp.every(rsb => rsb.barrel.status === BarrelStatus.EN_BODEGA)
+
+      if (allReturned) {
+        await prisma.route.update({
+          where: { id: routeId },
+          data: { status: RouteStatus.COMPLETADA, arrivedAt: new Date() },
+        })
+      }
+    }
+  }
+
+  return updated
 }
 
 export async function getBarrelQr(id: string) {
