@@ -1,9 +1,8 @@
 import { Router } from 'express'
 import type { Response } from 'express'
-import { BarrelStatus, RouteStatus } from '@prisma/client'
+import { BarrelStatus, Role, RouteStatus } from '@prisma/client'
 import { authenticate, AuthRequest } from '../middleware/authenticate'
 import { authorize } from '../middleware/authorize'
-import { Role } from '@prisma/client'
 import { handleError } from '../common/errors'
 import { prisma } from '../db/client'
 
@@ -49,7 +48,7 @@ router.get(
       // 3. Top delivery points by deliveries
       const deliveryPoints = await prisma.deliveryPoint.findMany({
         include: {
-          stops: {
+          routeStops: {
             select: {
               barrelsDelivered: true,
               barrelsPickedUp: true,
@@ -62,9 +61,9 @@ router.get(
         .map(dp => ({
           name: dp.name,
           address: dp.address,
-          totalEntregas: dp.stops.reduce((n, s) => n + s.barrelsDelivered, 0),
-          totalRecogidas: dp.stops.reduce((n, s) => n + s.barrelsPickedUp, 0),
-          visitasCompletadas: dp.stops.filter(s => s.status === 'COMPLETADA').length,
+          totalEntregas: dp.routeStops.reduce((n, s) => n + s.barrelsDelivered, 0),
+          totalRecogidas: dp.routeStops.reduce((n, s) => n + s.barrelsPickedUp, 0),
+          visitasCompletadas: dp.routeStops.filter(s => s.status === 'COMPLETADA').length,
         }))
         .sort((a, b) => b.totalEntregas - a.totalEntregas)
 
