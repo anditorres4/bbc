@@ -102,7 +102,7 @@ export type ScannerContext =
 
 interface Props {
   context: ScannerContext
-  onResult: (result: BarrelScanResult, action: string) => string | void
+  onResult: (result: BarrelScanResult, action: string) => string | void | Promise<string | void>
   onClose: () => void
   autoConfirm?: boolean
 }
@@ -173,7 +173,7 @@ export function QRScanner({ context, onResult, onClose, autoConfirm = false }: P
     try {
       const data = await api.post<BarrelScanResult>('/api/barriles/scan', { qrCode })
       if (autoConfirm) {
-        const rejection = onResult(data, primaryAction)
+        const rejection = await onResult(data, primaryAction)
         if (rejection) {
           setError(rejection)
           lastScanRef.current = 0
@@ -224,9 +224,9 @@ export function QRScanner({ context, onResult, onClose, autoConfirm = false }: P
     processQrCode(trimmed)
   }
 
-  function handleAction(action: string) {
+  async function handleAction(action: string) {
     if (!result) return
-    onResult(result, action)
+    await onResult(result, action)
     hideSheet()
   }
 

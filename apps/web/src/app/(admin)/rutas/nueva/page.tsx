@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { getLocalDateInputValue } from '@/lib/utils'
 import type { User, DeliveryPoint, PaginatedResponse } from '@/lib/types'
 
 interface RequirementEntry { product: string; quantity: number }
@@ -46,7 +47,7 @@ export default function NuevaRutaPage() {
     formState: { isSubmitting, errors },
   } = useForm<FormData>({
     defaultValues: {
-      date: new Date().toISOString().split('T')[0],
+      date: getLocalDateInputValue(),
       stops: [{ deliveryPointId: '', position: 1, requirements: [{ product: '', quantity: 1 }] }],
     },
   })

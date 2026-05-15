@@ -9,6 +9,7 @@ import { RouteKanbanCard } from '@/components/RouteKanbanCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getLocalDateInputValue } from '@/lib/utils'
 import type { Route, PaginatedResponse, RouteStatus } from '@/lib/types'
 
 const COLUMNS: { status: RouteStatus; label: string; color: string }[] = [
@@ -19,7 +20,7 @@ const COLUMNS: { status: RouteStatus; label: string; color: string }[] = [
 ]
 
 export default function RutasPage() {
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState(() => getLocalDateInputValue())
 
   const queries = COLUMNS.map(col =>
     // eslint-disable-next-line react-hooks/rules-of-hooks

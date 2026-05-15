@@ -10,7 +10,7 @@ import { MapPin, CheckCircle2, RefreshCw, LogOut } from 'lucide-react-native'
 import { api } from '@/lib/api'
 import { getRefreshToken, clearTokens } from '@/lib/auth'
 import { theme, spacing, radius } from '@/lib/theme'
-import type { Route } from '@/lib/types'
+import type { PaginatedResponse, Route, User } from '@/lib/types'
 
 function StopStatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; color: string }> = {
@@ -37,7 +37,6 @@ export default function MiRutaScreen() {
   const [route, setRoute] = useState<Route | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [starting, setStarting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const pulseAnim = useRef(new Animated.Value(1)).current
@@ -53,17 +52,37 @@ export default function MiRutaScreen() {
     return () => anim.stop()
   }, [pulseAnim])
 
+  function getLocalDate() {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   async function loadRoute(silent = false) {
     if (!silent) setLoading(true)
     setErrorMsg(null)
     try {
-      const today = new Date().toISOString().split('T')[0]
-      const res = await api.get<{ data: Route[] }>(
-        `/api/rutas?transportistaId=me&date=${today}&status=PLANIFICADA,EN_CURSO`
-      )
-      setRoute(res.data?.[0] ?? null)
-    } catch {
-      setErrorMsg('No se pudo cargar la ruta')
+      const today = getLocalDate()
+      const me = await api.get<{ data: User }>('/auth/me')
+      const transportistId = me.data.id
+      const [planned, active, withIssues] = await Promise.all([
+        api.get<PaginatedResponse<Route>>(
+          `/api/rutas?transportistId=${transportistId}&date=${today}&status=PLANIFICADA&pageSize=10`
+        ),
+        api.get<PaginatedResponse<Route>>(
+          `/api/rutas?transportistId=${transportistId}&date=${today}&status=EN_CURSO&pageSize=10`
+        ),
+        api.get<PaginatedResponse<Route>>(
+          `/api/rutas?transportistId=${transportistId}&date=${today}&status=CON_NOVEDAD&pageSize=10`
+        ),
+      ])
+
+      setRoute(active.items[0] ?? withIssues.items[0] ?? planned.items[0] ?? null)
+    } catch (err) {
+      const e = err as { message?: string }
+      setErrorMsg(e?.message ?? 'No se pudo cargar la ruta')
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -81,20 +100,6 @@ export default function MiRutaScreen() {
     } catch { /* ignore */ }
     await clearTokens()
     router.replace('/(auth)/login')
-  }
-
-  async function iniciarRuta() {
-    if (!route || starting) return
-    setStarting(true)
-    try {
-      await api.post(`/api/rutas/${route.id}/iniciar`)
-      await loadRoute(true)
-    } catch (err) {
-      const e = err as { message?: string }
-      setErrorMsg(e?.message ?? 'Error al iniciar ruta')
-    } finally {
-      setStarting(false)
-    }
   }
 
   if (loading) {
@@ -171,17 +176,9 @@ export default function MiRutaScreen() {
 
           {route.status === 'PLANIFICADA' && (
             <View style={styles.startContainer}>
-              <TouchableOpacity
-                style={[styles.startBtn, starting && styles.startBtnDisabled]}
-                onPress={iniciarRuta}
-                disabled={starting}
-                activeOpacity={0.8}
-              >
-                {starting
-                  ? <ActivityIndicator color="#000" />
-                  : <Text style={styles.startBtnText}>INICIAR RUTA</Text>
-                }
-              </TouchableOpacity>
+              <Text style={styles.pendingInfo}>
+                Esta ruta sigue pendiente de alistamiento en bodega.
+              </Text>
             </View>
           )}
 
@@ -323,15 +320,15 @@ const styles = StyleSheet.create({
   progressTrack: { height: 6, backgroundColor: theme.border, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: 6, backgroundColor: theme.amber, borderRadius: 3 },
   startContainer: { padding: spacing.md },
-  startBtn: {
-    height: 64,
-    backgroundColor: theme.amber,
+  pendingInfo: {
+    color: theme.textSecondary,
+    textAlign: 'center',
+    backgroundColor: theme.card,
+    borderWidth: 1,
+    borderColor: theme.border,
     borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: spacing.md,
   },
-  startBtnDisabled: { opacity: 0.6 },
-  startBtnText: { color: '#000', fontWeight: 'bold', fontSize: 18, letterSpacing: 0.5 },
   errorText: { color: theme.red, fontSize: 13, textAlign: 'center', padding: spacing.sm },
   list: { padding: spacing.md, paddingBottom: 32 },
   stopCard: {
