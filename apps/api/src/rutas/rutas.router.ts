@@ -1,11 +1,12 @@
 import { Router } from 'express'
 import type { Response } from 'express'
 import { z } from 'zod'
-import { RouteStatus } from '@prisma/client'
+import { NovedadType, RouteStatus } from '@prisma/client'
 import { authenticate, AuthRequest } from '../middleware/authenticate'
 import { authorize } from '../middleware/authorize'
 import { handleError } from '../common/errors'
 import * as svc from './rutas.service'
+import { auditLog } from '../middleware/auditLogger'
 
 const router: Router = Router()
 
@@ -30,7 +31,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 })
 
 // ── POST /api/rutas ───────────────────────────────────────────────────────────
-router.post('/', authenticate, authorize('SUPERVISOR', 'ADMIN'), async (req: AuthRequest, res: Response) => {
+router.post('/', authenticate, authorize('SUPERVISOR', 'ADMIN'), auditLog('ROUTE_CREATED', 'route', () => 'new'), async (req: AuthRequest, res: Response) => {
   try {
     const requirementSchema = z.object({
       product: z.string().min(1, 'Producto requerido'),
@@ -217,6 +218,7 @@ router.post(
       const schema = z.object({
         description: z.string().min(1, 'Descripción requerida'),
         barrelId: z.string().optional(),
+        novedadType: z.nativeEnum(NovedadType).optional(),
       })
       const parsed = schema.safeParse(req.body)
       if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
@@ -226,7 +228,8 @@ router.post(
         req.params['stopId'] as string,
         parsed.data.description,
         req.user!.id,
-        parsed.data.barrelId
+        parsed.data.barrelId,
+        parsed.data.novedadType
       )
       return res.status(201).json({ data: alert })
     } catch (err) {
@@ -240,6 +243,7 @@ router.post(
   '/:id/cerrar',
   authenticate,
   authorize('TRANSPORTISTA', 'SUPERVISOR', 'ADMIN'),
+  auditLog('ROUTE_CERRADA', 'route', r => r.params['id'] as string),
   async (req: AuthRequest, res: Response) => {
     try {
       const route = await svc.cerrarRuta(req.params['id'] as string, req.user!.id)

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Beer, LayoutDashboard, Package, Truck, Bell, Users, LogOut, BarChart2
+  Beer, LayoutDashboard, Package, Truck, Bell, Users, LogOut, BarChart2, Wrench, ShieldCheck, MapPin
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearAccessToken } from '@/lib/auth'
@@ -13,9 +13,12 @@ const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/barriles', label: 'Barriles', icon: Package },
   { href: '/rutas', label: 'Rutas', icon: Truck },
+  { href: '/puntos-entrega', label: 'Puntos de Entrega', icon: MapPin },
   { href: '/alertas', label: 'Alertas', icon: Bell },
   { href: '/usuarios', label: 'Usuarios', icon: Users },
+  { href: '/mantenimiento', label: 'Mantenimiento', icon: Wrench },
   { href: '/reportes', label: 'Reportes', icon: BarChart2 },
+  { href: '/auditoria', label: 'Auditoría', icon: ShieldCheck },
 ]
 
 export function AdminSidebar() {

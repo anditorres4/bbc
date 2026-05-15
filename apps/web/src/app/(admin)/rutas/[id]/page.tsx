@@ -14,7 +14,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
-import type { Route } from '@/lib/types'
+import type { NovedadType, Route } from '@/lib/types'
+
+const NOVEDAD_TYPE_LABELS: Record<string, string> = {
+  CLIENTE_AUSENTE: 'Cliente ausente',
+  BARRIL_DANADO: 'Barril dañado',
+  PRODUCTO_INCORRECTO: 'Producto incorrecto',
+  ACCIDENTE: 'Accidente',
+  OTRO: 'Otro',
+}
 
 const STATUS_LABEL: Record<string, string> = {
   PLANIFICADA: 'Planificada',
@@ -49,6 +57,7 @@ export default function RutaDetailPage() {
   const [stopAction, setStopAction] = useState<StopAction>(null)
   const [barrelIdInput, setBarrelIdInput] = useState('')
   const [novedadDesc, setNovedadDesc] = useState('')
+  const [novedadType, setNovedadType] = useState<NovedadType | ''>('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
 
@@ -68,7 +77,10 @@ export default function RutaDetailPage() {
     setActionLoading(true)
     try {
       if (stopAction.type === 'novedad') {
-        await api.post(`/api/rutas/${id}/stops/${stopAction.stopId}/novedad`, { description: novedadDesc })
+        await api.post(`/api/rutas/${id}/stops/${stopAction.stopId}/novedad`, {
+          description: novedadDesc,
+          ...(novedadType ? { novedadType } : {}),
+        })
       } else {
         const barrelIds = barrelIdInput.split(',').map(s => s.trim()).filter(Boolean)
         if (barrelIds.length === 0) {
@@ -83,6 +95,7 @@ export default function RutaDetailPage() {
       setStopAction(null)
       setBarrelIdInput('')
       setNovedadDesc('')
+      setNovedadType('')
     } catch (err: unknown) {
       const e = err as { message?: string }
       setActionError(e?.message ?? 'Error al ejecutar acción')
@@ -259,14 +272,29 @@ export default function RutaDetailPage() {
           </DialogHeader>
           <div className="space-y-4 pt-2">
             {stopAction?.type === 'novedad' ? (
-              <div className="space-y-1.5">
-                <Label>Descripción de la novedad</Label>
-                <Textarea
-                  value={novedadDesc}
-                  onChange={e => setNovedadDesc(e.target.value)}
-                  placeholder="Describa la novedad…"
-                  rows={3}
-                />
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Tipo de novedad</Label>
+                  <select
+                    value={novedadType}
+                    onChange={e => setNovedadType(e.target.value as NovedadType | '')}
+                    className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">Sin categoría</option>
+                    {Object.entries(NOVEDAD_TYPE_LABELS).map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Descripción</Label>
+                  <Textarea
+                    value={novedadDesc}
+                    onChange={e => setNovedadDesc(e.target.value)}
+                    placeholder="Describa la novedad…"
+                    rows={3}
+                  />
+                </div>
               </div>
             ) : (
               <div className="space-y-1.5">

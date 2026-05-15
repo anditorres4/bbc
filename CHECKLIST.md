@@ -1,6 +1,6 @@
 # BBC Barrel Track — Estado del Sistema
 
-> Última actualización: 2026-05-16 | Commit: `a9ee2d2`
+> Última actualización: 2026-05-15 | Commit: en desarrollo
 
 ---
 
@@ -24,8 +24,11 @@
 - [x] `POST /api/barriles/:id/alistamiento` — barril pasa a EN_ALISTAMIENTO
 - [x] `POST /api/barriles/:id/recibir` — barril regresa a EN_BODEGA
   - [x] **Auto-cierre de ruta**: si todos los vacíos recogidos de una ruta han retornado, la ruta se cierra como COMPLETADA automáticamente
+- [x] `POST /api/barriles/:id/mantenimiento` — barril pasa a EN_MANTENIMIENTO (OPERARIO/SUPERVISOR/ADMIN)
+- [x] `POST /api/barriles/:id/retorno-mantenimiento` — barril regresa a EN_BODEGA; actualiza `lastMaintenanceDate`
+- [x] `POST /api/barriles/:id/baja` — barril pasa a BAJA (SUPERVISOR/ADMIN)
 - [x] Máquina de estados — transiciones permitidas validadas en `barrelStateMachine.ts`
-- [x] Hoja de vida (`BarrelEvent`) — append-only, nunca se modifica
+- [x] Hoja de vida (`BarrelEvent`) — append-only, nunca se modifica; campo `novedadType` para categorizar novedades
 
 ### Rutas
 - [x] `GET /api/rutas` — listado con filtros (status, transportistId, date, page)
@@ -38,7 +41,7 @@
 ### Paradas (RouteStop)
 - [x] `POST /api/rutas/:id/paradas/:stopId/entregar` — registra entrega de barril lleno (GPS, foto)
 - [x] `POST /api/rutas/:id/paradas/:stopId/recoger-vacio` — registra recogida de barril vacío
-- [x] `POST /api/rutas/:id/paradas/:stopId/novedad` — registra novedad en parada
+- [x] `POST /api/rutas/:id/paradas/:stopId/novedad` — registra novedad en parada; acepta `novedadType` (CLIENTE_AUSENTE, BARRIL_DANADO, PRODUCTO_INCORRECTO, ACCIDENTE, OTRO)
 
 ### Puntos de Entrega
 - [x] `GET /api/puntos-entrega` — listado activos
@@ -62,13 +65,20 @@
   - Rutas sin cerrar 24+ horas
 
 ### Reportes
-- [x] `GET /api/reportes` — dashboard pre-agregado (ADMIN/SUPERVISOR)
+- [x] `GET /api/reportes` — dashboard pre-agregado (ADMIN/SUPERVISOR); acepta `?from=&to=` para filtro de fechas
   - `barrilesXEstado` — conteo por BarrelStatus
   - `barrilesXProducto` — top 10 productos
-  - `rutasPorDia` — últimos 30 días (total, completadas, canceladas, conNovedad)
+  - `rutasPorDia` — rutas en el rango (total, completadas, canceladas, conNovedad)
   - `topPuntosEntrega` — entregas + recogidas por punto
-  - `alertasPorSeveridad` — últimos 30 días
+  - `alertasPorSeveridad` — alertas en el rango
   - `summary` — totalBarrels, activeRoutes, unreadAlerts, sinMovimiento60d
+  - `dateRange` — rango efectivo aplicado
+- [x] `GET /api/reportes/export?format=csv&from=&to=` — exporta 3 hojas CSV (barriles, rutas, alertas)
+
+### Seguridad
+- [x] Rate limiting (`express-rate-limit`): auth=20/15min, scan=60/min, mutations=30/min
+- [x] `GET /api/auditoria` — log de acciones admin (ADMIN solo); filtros: entityType, userId, fechas, paginación
+- [x] Audit logging automático en: mantenimiento, retorno mantenimiento, baja, crear ruta, cerrar ruta
 
 ### Tests
 - [x] 27/27 tests de autenticación — sin base de datos (Prisma mockeado)
@@ -92,14 +102,18 @@
 - [x] `/barriles` — tabla paginada con filtros (status, product, search)
 - [x] Detalle de barril — hoja de vida completa con línea de tiempo
 - [x] Edición de barril (ADMIN/SUPERVISOR)
+- [x] Acciones: "Enviar a mantenimiento" (EN_BODEGA) / "Retorno de mantenimiento" (EN_MANTENIMIENTO) / "Dar de baja" / "Recibir en bodega"
 - [x] QR display con descarga PNG y botón imprimir etiqueta
 - [x] Selección múltiple → "Generar etiquetas (N)"
 - [x] `/barriles/etiquetas?ids=BBC-001,...` — grilla de etiquetas para impresión (3 col, 8cm×8cm)
 
 ### Rutas
-- [x] `/rutas` — listado con filtros; vista de paradas y estado
+- [x] `/rutas` — kanban por estado con filtro de fecha; cards clickeables → detalle
 - [x] Crear ruta — formulario con paradas, requerimientos y transportista
-- [x] Detalle de ruta — progreso de entrega por parada
+- [x] Detalle de ruta — progreso por parada, requerimientos, barriles entregados/recogidos; acciones admin override; selector `novedadType` en novedad
+
+### Mantenimiento
+- [x] `/mantenimiento` — lista de barriles EN_MANTENIMIENTO con botón "Retorno a bodega"; sección para enviar barriles EN_BODEGA a taller
 
 ### Puntos de Entrega
 - [x] `/puntos-entrega` — CRUD completo
@@ -113,18 +127,20 @@
 - [x] SSE en tiempo real: `EventSource → /api/alertas/stream?token=...` invalida caché TanStack Query
 
 ### Reportes
-- [x] `/reportes` — 6 secciones:
+- [x] `/reportes` — 6 secciones con **filtro de fechas** (desde/hasta) y **botón Exportar CSV**:
   1. Cards de KPIs (4 métricas clave)
   2. Barriles por estado (barras horizontales con colores por status)
   3. Barriles por producto (barras horizontales)
-  4. Rutas últimos 14 días (mini gráfico; verde=completadas/total)
+  4. Rutas últimos 14 días del período (mini gráfico; verde=completadas/total)
   5. Puntos de entrega (entregas + recogidas por punto)
-  6. Alertas por severidad (badges coloridos)
+  6. Alertas en el período (badges coloridos)
 - [x] Acceso: solo ADMIN y SUPERVISOR
-- [x] `staleTime: 60s` vía TanStack Query
+
+### Auditoría
+- [x] `/auditoria` — tabla paginada de AuditLog con filtros (entidad, fechas); expandible para ver `changes`; solo ADMIN
 
 ### Navegación
-- [x] `AdminSidebar` — links: Dashboard, Barriles, Rutas, Puntos de Entrega, Usuarios, Alertas, **Reportes**
+- [x] `AdminSidebar` — links: Dashboard, Barriles, Rutas, Puntos de Entrega, Alertas, Usuarios, Mantenimiento, Reportes, Auditoría
 - [x] `AdminHeader` — título dinámico por ruta, AlertBell, usuario
 - [x] SSE conectado en layout raíz `(admin)/layout.tsx`
 
@@ -143,7 +159,7 @@
 
 #### Tabs
 - [x] **Inicio** (`(bodega)/index.tsx`) — dashboard 2×2: barriles en bodega, rutas activas, alertas, sin movimiento; LogOut en header
-- [x] **Escanear** (`(bodega)/escanear.tsx`) — QR scan informativo; muestra card con ID, estado, producto y últimos 3 eventos del barril (hoja de vida resumida)
+- [x] **Escanear** (`(bodega)/escanear.tsx`) — QR scan informativo; muestra card con ID, estado, producto y últimos 3 eventos; acciones contextuales según estado: "Enviar a mantenimiento" (EN_BODEGA) y "Retorno a bodega" (EN_MANTENIMIENTO)
 - [x] **Recepción** (`(bodega)/recepcion.tsx`) — escaneo de barriles que retornan; lista de sesión; auto-cierre de ruta si todos los vacíos recogidos retornaron
 - [x] **Alertas** (`(bodega)/alertas.tsx`) — FlashList por severidad; tap para marcar leída; auto-refresh con `useFocusEffect`
 - [x] **Alistamiento** (`(bodega)/alistamiento/`) — lista rutas PLANIFICADA + EN_CURSO; escaneo continuo por producto; "Confirmar Salida" inicia la ruta
@@ -169,7 +185,7 @@
 - [x] **Escaneo de entrega** — `autoConfirm={true}`: permanece abierto entre escaneos; feedback verde 1.5s; rechazo mostrado dentro del scanner (no toast en pantalla padres)
 - [x] Auto-cierre del modal 1.6s después de que todos los barriles requeridos están entregados
 - [x] **Escaneo de recogida** — flujo estándar con confirm-sheet (el transportista puede recoger los que haya)
-- [x] Novedad — formulario de texto libre
+- [x] Novedad — selector de `novedadType` (chips: Cliente ausente, Barril dañado, Prod. incorrecto, Accidente, Otro) + campo de texto libre
 - [x] Optimistic update offline: barril marcado ENTREGADO localmente si la request se encola
 
 #### SSE + Alertas en tiempo real
@@ -226,8 +242,8 @@
 
 ## Pendientes / Backlog
 
-- [ ] Página de detalle de ruta en web — mostrar requerimientos y progreso de entrega por parada
 - [ ] Alistamiento en móvil — escaneo por producto/cantidad (actualmente es por ID de barril)
 - [ ] Push notifications (Expo) como alternativa/complemento a SSE en móvil
 - [ ] Tests de integración para módulos de rutas y barriles
-- [ ] Filtro de fechas en `/reportes`
+- [ ] Mapa en tiempo real de paradas en detalle de ruta (Leaflet/Mapbox; coordenadas GPS ya guardadas)
+- [ ] Multi-sede: campo `warehouseId` en Barrel + routing de bodega por sede

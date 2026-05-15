@@ -6,6 +6,7 @@ import { authenticate, AuthRequest } from '../middleware/authenticate'
 import { authorize } from '../middleware/authorize'
 import { handleError } from '../common/errors'
 import * as svc from './barriles.service'
+import { auditLog } from '../middleware/auditLogger'
 
 const router: Router = Router()
 
@@ -97,6 +98,7 @@ router.post(
   '/:id/mantenimiento',
   authenticate,
   authorize('OPERARIO_BODEGA', 'SUPERVISOR', 'ADMIN'),
+  auditLog('BARREL_MANTENIMIENTO', 'barrel', r => r.params['id'] as string),
   async (req: AuthRequest, res: Response) => {
     try {
       const id = req.params['id'] as string
@@ -114,6 +116,7 @@ router.post(
   '/:id/retorno-mantenimiento',
   authenticate,
   authorize('OPERARIO_BODEGA', 'SUPERVISOR', 'ADMIN'),
+  auditLog('BARREL_RETORNO_MANTENIMIENTO', 'barrel', r => r.params['id'] as string),
   async (req: AuthRequest, res: Response) => {
     try {
       const id = req.params['id'] as string
@@ -131,6 +134,7 @@ router.post(
   '/:id/baja',
   authenticate,
   authorize('SUPERVISOR', 'ADMIN'),
+  auditLog('BARREL_BAJA', 'barrel', r => r.params['id'] as string),
   async (req: AuthRequest, res: Response) => {
     try {
       const id = req.params['id'] as string

@@ -1,5 +1,12 @@
 // API-aligned types (matches Prisma schema + actual API responses)
 
+export type NovedadType =
+  | 'CLIENTE_AUSENTE'
+  | 'BARRIL_DANADO'
+  | 'PRODUCTO_INCORRECTO'
+  | 'ACCIDENTE'
+  | 'OTRO'
+
 export type BarrelStatus =
   | 'EN_BODEGA'
   | 'EN_ALISTAMIENTO'
@@ -72,6 +79,7 @@ export interface BarrelEvent {
   lat: number | null
   lng: number | null
   notes: string | null
+  novedadType: NovedadType | null
   timestamp: string
   user?: Pick<User, 'id' | 'name'>
 }
@@ -168,4 +176,16 @@ export interface QrResponse {
   id: string
   qrCode: string
   qrImage: string
+}
+
+export interface AuditLog {
+  id: string
+  userId: string
+  action: string
+  entityType: string
+  entityId: string
+  changes: Record<string, unknown> | null
+  ip: string | null
+  timestamp: string
+  user?: Pick<User, 'id' | 'name' | 'role'>
 }

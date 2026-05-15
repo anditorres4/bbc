@@ -1,11 +1,17 @@
 'use client'
 
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { getAccessToken } from '@/lib/auth'
+import { getLocalDateInputValue } from '@/lib/utils'
 import {
   BarChart2, Package, Truck, Bell, AlertTriangle,
-  CheckCircle2, MapPin, TrendingUp,
+  CheckCircle2, MapPin, TrendingUp, Download, Calendar,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 interface ReportData {
   barrilesXEstado: { status: string; count: number }[]
@@ -14,6 +20,7 @@ interface ReportData {
   topPuntosEntrega: { name: string; address: string; totalEntregas: number; totalRecogidas: number; visitasCompletadas: number }[]
   alertasPorSeveridad: { severity: string; count: number }[]
   summary: { totalBarrels: number; activeRoutes: number; unreadAlerts: number; sinMovimiento60d: number }
+  dateRange?: { from: string; to: string }
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -77,12 +84,47 @@ function HBar({ value, max, colorClass }: { value: number; max: number; colorCla
   )
 }
 
+function getDefaultDates() {
+  const to = getLocalDateInputValue(new Date())
+  const fromDate = new Date()
+  fromDate.setDate(fromDate.getDate() - 30)
+  const from = getLocalDateInputValue(fromDate)
+  return { from, to }
+}
+
 export default function ReportesPage() {
+  const defaults = getDefaultDates()
+  const [from, setFrom] = useState(defaults.from)
+  const [to, setTo] = useState(defaults.to)
+  const [appliedFrom, setAppliedFrom] = useState(defaults.from)
+  const [appliedTo, setAppliedTo] = useState(defaults.to)
+  const [exporting, setExporting] = useState(false)
+
   const { data, isLoading, isError } = useQuery<ReportData>({
-    queryKey: ['reportes'],
-    queryFn: () => api.get<ReportData>('/api/reportes'),
+    queryKey: ['reportes', appliedFrom, appliedTo],
+    queryFn: () => api.get<ReportData>(`/api/reportes?from=${appliedFrom}&to=${appliedTo}`),
     staleTime: 60_000,
   })
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const token = getAccessToken()
+      const url = `${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/reportes/export?from=${appliedFrom}&to=${appliedTo}`
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error('Error al exportar')
+      const blob = await res.blob()
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `bbc-reporte-${appliedFrom}-${appliedTo}.csv`
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -105,15 +147,60 @@ export default function ReportesPage() {
   const maxProduct = Math.max(...data.barrilesXProducto.map(r => r.count), 1)
   const maxEntregas = Math.max(...data.topPuntosEntrega.map(r => r.totalEntregas), 1)
 
-  // Last 14 days of route data for mini-chart
   const last14 = data.rutasPorDia.slice(-14)
   const maxRoutes = Math.max(...last14.map(r => r.total), 1)
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <BarChart2 className="h-6 w-6 text-amber-600" />
-        <h1 className="text-xl font-bold text-stone-900">Reportes</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <BarChart2 className="h-6 w-6 text-amber-600" />
+          <h1 className="text-xl font-bold text-stone-900">Reportes</h1>
+        </div>
+
+        {/* Date filter + export */}
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="flex items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-500 flex items-center gap-1">
+                <Calendar className="h-3 w-3" /> Desde
+              </Label>
+              <Input
+                type="date"
+                value={from}
+                onChange={e => setFrom(e.target.value)}
+                className="h-8 text-sm w-36"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-stone-500">Hasta</Label>
+              <Input
+                type="date"
+                value={to}
+                onChange={e => setTo(e.target.value)}
+                className="h-8 text-sm w-36"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => { setAppliedFrom(from); setAppliedTo(to) }}
+            >
+              Aplicar
+            </Button>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {exporting ? 'Exportando…' : 'Exportar CSV'}
+          </Button>
+        </div>
       </div>
 
       {/* Summary row */}
@@ -172,14 +259,14 @@ export default function ReportesPage() {
           </div>
         </div>
 
-        {/* Rutas por día — últimos 14 días */}
+        {/* Rutas por día */}
         <div className="rounded-xl border bg-white p-5 lg:col-span-2">
           <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-stone-700 uppercase tracking-wide">
             <Truck className="h-4 w-4 text-amber-600" />
-            Rutas — últimos 14 días
+            Rutas — últimos 14 días del período
           </h2>
           {last14.length === 0 ? (
-            <p className="text-center text-sm text-stone-400 py-4">Sin rutas recientes</p>
+            <p className="text-center text-sm text-stone-400 py-4">Sin rutas en este período</p>
           ) : (
             <div className="overflow-x-auto">
               <div className="flex items-end gap-1.5 min-w-0" style={{ minWidth: last14.length * 44 }}>
@@ -211,7 +298,7 @@ export default function ReportesPage() {
           )}
         </div>
 
-        {/* Trazabilidad por punto de entrega */}
+        {/* Puntos de entrega */}
         <div className="rounded-xl border bg-white p-5">
           <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-stone-700 uppercase tracking-wide">
             <MapPin className="h-4 w-4 text-amber-600" />
@@ -253,7 +340,7 @@ export default function ReportesPage() {
         <div className="rounded-xl border bg-white p-5">
           <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-stone-700 uppercase tracking-wide">
             <Bell className="h-4 w-4 text-amber-600" />
-            Alertas — últimos 30 días
+            Alertas en el período
           </h2>
           <div className="space-y-3">
             {data.alertasPorSeveridad.map(row => {
@@ -268,7 +355,7 @@ export default function ReportesPage() {
             {data.alertasPorSeveridad.length === 0 && (
               <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
-                <span className="text-sm font-medium text-green-700">Sin alertas en los últimos 30 días</span>
+                <span className="text-sm font-medium text-green-700">Sin alertas en este período</span>
               </div>
             )}
           </div>

@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { View, Text, ScrollView, StyleSheet } from 'react-native'
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, TextInput, Platform, KeyboardAvoidingView } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Wrench, RotateCcw } from 'lucide-react-native'
 import { QRScanner } from '@/components/QRScanner'
 import { BarrelStatusBadge } from '@/components/BarrelStatusBadge'
+import { api } from '@/lib/api'
 import { theme, spacing, radius } from '@/lib/theme'
 import type { BarrelScanResult, BarrelEvent } from '@/lib/types'
 
@@ -27,9 +29,12 @@ function formatTs(ts: string) {
     ' ' + d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
 }
 
-function BarrelCard({ scan }: { scan: BarrelScanResult }) {
+function BarrelCard({ scan, onAction }: { scan: BarrelScanResult; onAction: (action: 'mantenimiento' | 'retorno') => void }) {
   const { barrel } = scan
   const events: BarrelEvent[] = barrel.events?.slice(0, 3) ?? []
+  const canSendMaint = barrel.status === 'EN_BODEGA'
+  const canReturnMaint = barrel.status === 'EN_MANTENIMIENTO'
+
   return (
     <View style={card.wrap}>
       <View style={card.header}>
@@ -61,6 +66,24 @@ function BarrelCard({ scan }: { scan: BarrelScanResult }) {
       )}
       {events.length === 0 && !scan.created && (
         <Text style={card.noEvents}>Sin movimientos recientes</Text>
+      )}
+
+      {/* Maintenance actions */}
+      {(canSendMaint || canReturnMaint) && (
+        <View style={card.actions}>
+          {canSendMaint && (
+            <TouchableOpacity style={card.maintBtn} onPress={() => onAction('mantenimiento')}>
+              <Wrench size={14} color={theme.orange} />
+              <Text style={card.maintBtnText}>Enviar a mantenimiento</Text>
+            </TouchableOpacity>
+          )}
+          {canReturnMaint && (
+            <TouchableOpacity style={[card.maintBtn, card.returnBtn]} onPress={() => onAction('retorno')}>
+              <RotateCcw size={14} color={theme.green} />
+              <Text style={[card.maintBtnText, { color: theme.green }]}>Retorno a bodega</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
     </View>
   )
@@ -113,14 +136,69 @@ const card = StyleSheet.create({
   eventNotes: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },
   eventTs: { color: theme.textSecondary, fontSize: 11 },
   noEvents: { color: theme.textSecondary, fontSize: 13, padding: spacing.md, textAlign: 'center' },
+  actions: {
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  maintBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: theme.orange,
+    backgroundColor: 'rgba(249,115,22,0.08)',
+  },
+  returnBtn: {
+    borderColor: theme.green,
+    backgroundColor: 'rgba(34,197,94,0.08)',
+  },
+  maintBtnText: { color: theme.orange, fontWeight: '600', fontSize: 14 },
 })
 
 export default function EscanearScreen() {
   const router = useRouter()
   const [lastScan, setLastScan] = useState<BarrelScanResult | null>(null)
+  const [pendingAction, setPendingAction] = useState<'mantenimiento' | 'retorno' | null>(null)
+  const [notes, setNotes] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
 
   function handleResult(result: BarrelScanResult, action: string) {
-    if (action !== 'cancel') setLastScan(result)
+    if (action !== 'cancel') {
+      setLastScan(result)
+      setActionSuccess(null)
+      setActionError(null)
+    }
+  }
+
+  async function confirmAction() {
+    if (!lastScan || !pendingAction || loading) return
+    setLoading(true)
+    setActionError(null)
+    const endpoint = pendingAction === 'mantenimiento'
+      ? `/api/barriles/${lastScan.barrel.id}/mantenimiento`
+      : `/api/barriles/${lastScan.barrel.id}/retorno-mantenimiento`
+    try {
+      await api.post(endpoint, { notes: notes.trim() || undefined })
+      const msg = pendingAction === 'mantenimiento'
+        ? `${lastScan.barrel.id} enviado a mantenimiento`
+        : `${lastScan.barrel.id} recibido en bodega`
+      setActionSuccess(msg)
+      setPendingAction(null)
+      setNotes('')
+      setLastScan(null)
+    } catch (err: unknown) {
+      const e = err as { message?: string }
+      setActionError(e?.message ?? 'Error al procesar la acción')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -130,11 +208,73 @@ export default function EscanearScreen() {
         onResult={handleResult}
         onClose={() => router.back()}
       />
+      {actionSuccess && (
+        <View style={styles.successBanner}>
+          <Text style={styles.successText}>{actionSuccess}</Text>
+        </View>
+      )}
       {lastScan && (
         <ScrollView style={styles.overlay} scrollEnabled>
-          <BarrelCard scan={lastScan} />
+          <BarrelCard
+            scan={lastScan}
+            onAction={action => { setPendingAction(action); setNotes(''); setActionError(null) }}
+          />
         </ScrollView>
       )}
+
+      {/* Confirm maintenance action modal */}
+      <Modal
+        visible={!!pendingAction}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPendingAction(null)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.modalTitle}>
+              {pendingAction === 'mantenimiento' ? 'Enviar a mantenimiento' : 'Recibir de mantenimiento'}
+            </Text>
+            {lastScan && (
+              <Text style={styles.modalBarrelId}>{lastScan.barrel.id}</Text>
+            )}
+            <TextInput
+              style={styles.modalInput}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder={pendingAction === 'mantenimiento' ? 'Motivo (opcional)...' : 'Notas del taller (opcional)...'}
+              placeholderTextColor={theme.textSecondary}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+            {actionError && (
+              <Text style={styles.errorText}>{actionError}</Text>
+            )}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => { setPendingAction(null); setActionError(null) }}
+              >
+                <Text style={styles.cancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, loading && styles.confirmBtnDisabled]}
+                onPress={confirmAction}
+                disabled={loading}
+              >
+                {loading
+                  ? <ActivityIndicator color="#000" size="small" />
+                  : <Text style={styles.confirmText}>Confirmar</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   )
 }
@@ -146,9 +286,72 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    maxHeight: '50%',
+    maxHeight: '60%',
     backgroundColor: theme.bg,
     borderTopWidth: 1,
     borderTopColor: theme.border,
   },
+  successBanner: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    right: 20,
+    backgroundColor: theme.green,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    alignItems: 'center',
+    zIndex: 200,
+  },
+  successText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
+  modalSheet: {
+    backgroundColor: theme.card,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: spacing.lg,
+    paddingBottom: 32,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.border,
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
+  },
+  modalTitle: { fontSize: 16, fontWeight: 'bold', color: theme.text, marginBottom: spacing.xs },
+  modalBarrelId: { color: theme.amber, fontSize: 14, fontWeight: '600', marginBottom: spacing.md },
+  modalInput: {
+    height: 80,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    color: theme.text,
+    backgroundColor: theme.bg,
+    fontSize: 14,
+    marginBottom: spacing.md,
+  },
+  errorText: { color: theme.red, fontSize: 12, marginBottom: spacing.sm },
+  modalActions: { flexDirection: 'row', gap: spacing.sm },
+  cancelBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelText: { color: theme.text, fontWeight: '600' },
+  confirmBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: radius.sm,
+    backgroundColor: theme.amber,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtnDisabled: { opacity: 0.4 },
+  confirmText: { color: '#000', fontWeight: 'bold' },
 })

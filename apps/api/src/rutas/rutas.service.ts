@@ -1,4 +1,4 @@
-import { BarrelStatus, BarrelStopStatus, EventType, RouteStatus, StopStatus } from '@prisma/client'
+import { BarrelStatus, BarrelStopStatus, EventType, NovedadType, RouteStatus, StopStatus } from '@prisma/client'
 import { prisma } from '../db/client'
 import { AppError } from '../common/errors'
 import { alertStream } from '../services/alertStream'
@@ -16,8 +16,13 @@ async function findRouteOrFail(id: string) {
   const route = await prisma.route.findUnique({
     where: { id },
     include: {
+      transportist: { select: { id: true, name: true } },
       stops: {
-        include: { barrels: true, deliveryPoint: true, requirements: true },
+        include: {
+          barrels: { include: { barrel: { select: { id: true, qrCode: true } } } },
+          deliveryPoint: true,
+          requirements: true,
+        },
         orderBy: { position: 'asc' },
       },
     },
@@ -406,18 +411,38 @@ export async function novedadStop(
   stopId: string,
   description: string,
   userId: string,
-  barrelId?: string
+  barrelId?: string,
+  novedadType?: NovedadType
 ) {
   const route = await findRouteOrFail(routeId)
-  if (!route.stops.find(s => s.id === stopId)) {
-    throw new AppError('Parada no encontrada', 404, 'STOP_NOT_FOUND')
-  }
+  const stop = route.stops.find(s => s.id === stopId)
+  if (!stop) throw new AppError('Parada no encontrada', 404, 'STOP_NOT_FOUND')
+
+  const message = novedadType ? `[${novedadType}] ${description}` : description
+
+  const barrelEventData = barrelId
+    ? prisma.barrel.findUnique({ where: { id: barrelId }, select: { status: true } }).then(b =>
+        b ? prisma.barrelEvent.create({
+          data: {
+            barrelId,
+            type: EventType.NOVEDAD,
+            fromStatus: b.status,
+            toStatus: b.status,
+            userId,
+            routeId,
+            deliveryPointId: stop.deliveryPointId,
+            notes: description,
+            novedadType: novedadType ?? null,
+          },
+        }) : null
+      )
+    : Promise.resolve(null)
 
   const [alert] = await Promise.all([
     prisma.alert.create({
       data: {
         type: 'NOVEDAD_EN_RUTA',
-        message: description,
+        message,
         severity: 'WARNING',
         barrelId: barrelId ?? null,
         routeId,
@@ -425,13 +450,14 @@ export async function novedadStop(
         targetRoles: ['ADMIN', 'SUPERVISOR'],
       },
     }),
+    barrelEventData,
     prisma.routeStop.update({ where: { id: stopId }, data: { status: StopStatus.CON_NOVEDAD } }),
     prisma.route.update({ where: { id: routeId }, data: { status: RouteStatus.CON_NOVEDAD } }),
   ])
 
   alertStream.broadcast(
     'novedad',
-    { alertId: alert.id, routeId, stopId, description, severity: 'WARNING' },
+    { alertId: alert.id, routeId, stopId, description, novedadType, severity: 'WARNING' },
     ['ADMIN', 'SUPERVISOR']
   )
 

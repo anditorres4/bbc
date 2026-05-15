@@ -10,6 +10,8 @@ import { puntosRouter } from './puntos/puntos.router'
 import { usuariosRouter } from './usuarios/usuarios.router'
 import { alertasRouter } from './alertas/alertas.router'
 import { reportesRouter } from './reportes/reportes.router'
+import { auditoriaRouter } from './auditoria/auditoria.router'
+import { authLimiter, scanLimiter, mutationLimiter } from './middleware/rateLimiter'
 
 const app: Express = express()
 
@@ -77,12 +79,14 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'bbc-api', timestamp: new Date().toISOString() })
 })
 
-app.use('/auth', authRouter)
-app.use('/api/barriles', barrilesRouter)
-app.use('/api/rutas', rutasRouter)
-app.use('/api/puntos', puntosRouter)
-app.use('/api/usuarios', usuariosRouter)
+app.use('/auth', authLimiter, authRouter)
+app.use('/api/barriles/scan', scanLimiter)
+app.use('/api/barriles', mutationLimiter, barrilesRouter)
+app.use('/api/rutas', mutationLimiter, rutasRouter)
+app.use('/api/puntos', mutationLimiter, puntosRouter)
+app.use('/api/usuarios', mutationLimiter, usuariosRouter)
 app.use('/api/alertas', alertasRouter)
 app.use('/api/reportes', reportesRouter)
+app.use('/api/auditoria', auditoriaRouter)
 
 export { app }

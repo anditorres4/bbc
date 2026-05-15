@@ -54,6 +54,7 @@ export default function ParadaDetailScreen() {
   const [scannerVisible, setScannerVisible] = useState(false)
   const [novedadVisible, setNovedadVisible] = useState(false)
   const [novedadText, setNovedadText] = useState('')
+  const [novedadType, setNovedadType] = useState<string>('')
   const [novedadLoading, setNovedadLoading] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -180,6 +181,7 @@ export default function ParadaDetailScreen() {
     try {
       const res = await apiCall(`/api/rutas/${routeId}/stops/${stopId}/novedad`, 'POST', {
         description: novedadText.trim(),
+        ...(novedadType ? { novedadType } : {}),
       })
       setNovedadVisible(false)
       setNovedadText('')
@@ -415,6 +417,25 @@ export default function ParadaDetailScreen() {
             <View style={styles.sheetHandle} />
             <Text style={styles.novedadTitle}>Registrar novedad</Text>
 
+            {/* Tipo de novedad */}
+            <View style={styles.novedadTypeRow}>
+              {(['CLIENTE_AUSENTE', 'BARRIL_DANADO', 'PRODUCTO_INCORRECTO', 'ACCIDENTE', 'OTRO'] as const).map(type => (
+                <TouchableOpacity
+                  key={type}
+                  style={[styles.novedadTypeChip, novedadType === type && styles.novedadTypeChipActive]}
+                  onPress={() => setNovedadType(novedadType === type ? '' : type)}
+                >
+                  <Text style={[styles.novedadTypeChipText, novedadType === type && styles.novedadTypeChipTextActive]}>
+                    {type === 'CLIENTE_AUSENTE' ? 'Cliente ausente'
+                      : type === 'BARRIL_DANADO' ? 'Barril dañado'
+                      : type === 'PRODUCTO_INCORRECTO' ? 'Prod. incorrecto'
+                      : type === 'ACCIDENTE' ? 'Accidente'
+                      : 'Otro'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TextInput
               style={styles.novedadInput}
               value={novedadText}
@@ -429,7 +450,7 @@ export default function ParadaDetailScreen() {
             <View style={styles.novedadActions}>
               <TouchableOpacity
                 style={styles.novedadCancel}
-                onPress={() => { setNovedadVisible(false); setNovedadText('') }}
+                onPress={() => { setNovedadVisible(false); setNovedadText(''); setNovedadType('') }}
               >
                 <Text style={styles.novedadCancelText}>Cancelar</Text>
               </TouchableOpacity>
@@ -644,6 +665,26 @@ const styles = StyleSheet.create({
     color: theme.text,
     marginBottom: spacing.md,
   },
+  novedadTypeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  novedadTypeChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.card,
+  },
+  novedadTypeChipActive: {
+    borderColor: theme.orange,
+    backgroundColor: 'rgba(249,115,22,0.1)',
+  },
+  novedadTypeChipText: { color: theme.textSecondary, fontSize: 12, fontWeight: '500' },
+  novedadTypeChipTextActive: { color: theme.orange, fontWeight: '700' },
   novedadInput: {
     height: 100,
     borderWidth: 1,

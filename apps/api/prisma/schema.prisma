@@ -77,6 +77,14 @@ enum AlertSeverity {
   CRITICAL
 }
 
+enum NovedadType {
+  CLIENTE_AUSENTE
+  BARRIL_DANADO
+  PRODUCTO_INCORRECTO
+  ACCIDENTE
+  OTRO
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -95,6 +103,7 @@ model User {
   routes         Route[]         @relation("RouteTransportist")
   alertsRead     Alert[]         @relation("AlertReadBy")
   refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
 }
 
 // Tokens de refresco: se almacenan en DB para poder invalidarlos en logout
@@ -148,6 +157,7 @@ model BarrelEvent {
   lat             Float?
   lng             Float?
   notes           String?
+  novedadType     NovedadType?
   timestamp       DateTime      @default(now())
 
   barrel        Barrel         @relation(fields: [barrelId], references: [id])
@@ -271,4 +281,21 @@ model Alert {
   route     Route?     @relation(fields: [routeId], references: [id])
   routeStop RouteStop? @relation(fields: [routeStopId], references: [id])
   readBy    User?      @relation("AlertReadBy", fields: [readById], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  changes    Json?
+  ip         String?
+  timestamp  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([timestamp])
+  @@index([entityType, entityId])
 }
