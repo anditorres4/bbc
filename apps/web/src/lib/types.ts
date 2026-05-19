@@ -116,6 +116,13 @@ export interface RouteStopBarrel {
   barrel?: Pick<Barrel, 'id' | 'qrCode'>
 }
 
+export interface StopAlert {
+  id: string
+  message: string
+  createdAt: string
+  severity: AlertSeverity
+}
+
 export interface RouteStop {
   id: string
   routeId: string
@@ -128,6 +135,7 @@ export interface RouteStop {
   deliveryPoint?: DeliveryPoint
   requirements?: RouteStopRequirement[]
   barrels?: RouteStopBarrel[]
+  alerts?: StopAlert[]
 }
 
 export interface Route {
@@ -188,4 +196,22 @@ export interface AuditLog {
   ip: string | null
   timestamp: string
   user?: Pick<User, 'id' | 'name' | 'role'>
+}
+
+export interface ReporteSummary {
+  totalBarrels: number
+  activeRoutes: number
+  unreadAlerts: number
+  sinMovimiento60d: number
+  totalDeliveriesHoy: number
+}
+
+export interface ReporteResponse {
+  summary: ReporteSummary
+  barrilesXEstado: { status: string; count: number }[]
+  barrilesXProducto: { product: string; count: number }[]
+  rutasPorDia: { date: string; total: number; completadas: number; canceladas: number; conNovedad: number }[]
+  topPuntosEntrega: { name: string; address: string; totalEntregas: number; totalRecogidas: number; visitasCompletadas: number }[]
+  alertasPorSeveridad: { severity: string; count: number }[]
+  dateRange: { from: string; to: string }
 }

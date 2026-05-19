@@ -224,6 +224,38 @@ export default function RutaDetailPage() {
                   </div>
                 )}
 
+                {/* Novedades */}
+                {stop.status === 'CON_NOVEDAD' && stop.alerts && stop.alerts.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-red-500 uppercase tracking-wide">Novedades</p>
+                    {stop.alerts.map(alert => {
+                      // message format: "[NovedadType] description" or just "description"
+                      const match = alert.message.match(/^\[([A-Z_]+)\]\s*(.*)$/)
+                      const typeKey = match?.[1] ?? ''
+                      const description = match?.[2] ?? alert.message
+                      const typeLabel = typeKey ? (NOVEDAD_TYPE_LABELS[typeKey] ?? typeKey) : null
+                      return (
+                        <div key={alert.id} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {typeLabel && (
+                                <Badge variant="outline" className="text-red-700 border-red-300 text-xs">
+                                  {typeLabel}
+                                </Badge>
+                              )}
+                              <Badge variant="outline" className="text-red-700 border-red-300 text-xs">Con novedad</Badge>
+                            </div>
+                          </div>
+                          {description && (
+                            <p className="text-xs text-red-700 pl-5">{description}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
                 {/* Stop actions (admin override) */}
                 {(route.status === 'EN_CURSO' || route.status === 'CON_NOVEDAD') && (
                   <div className="flex gap-2 flex-wrap pt-1">

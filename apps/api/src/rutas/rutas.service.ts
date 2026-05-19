@@ -22,6 +22,11 @@ async function findRouteOrFail(id: string) {
           barrels: { include: { barrel: { select: { id: true, qrCode: true } } } },
           deliveryPoint: true,
           requirements: true,
+          alerts: {
+            where: { type: 'NOVEDAD_EN_RUTA' },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, message: true, createdAt: true, severity: true },
+          },
         },
         orderBy: { position: 'asc' },
       },
