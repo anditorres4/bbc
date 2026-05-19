@@ -158,6 +158,20 @@ export default function ParadaDetailScreen() {
       })
       if (res.queued) {
         showToast('Guardado localmente — se enviará al reconectar')
+        // Optimistic update so the picked-up barrel appears immediately
+        setStop(prev => prev ? {
+          ...prev,
+          barrels: [
+            ...(prev.barrels ?? []),
+            {
+              id: result.barrel.id,
+              barrelId: result.barrel.id,
+              product: result.barrel.product ?? '',
+              status: 'RECOGIDO_VACIO',
+              barrel: { id: result.barrel.id, qrCode: result.barrel.qrCode },
+            },
+          ],
+        } : prev)
       } else if (res.error) {
         showToast(res.error)
       } else {
