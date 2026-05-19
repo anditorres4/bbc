@@ -25,6 +25,29 @@ async function findBarrelOrFail(id: string) {
   return barrel
 }
 
+function computeUbicacion(
+  status: BarrelStatus,
+  routeStopBarrels: Array<{ routeStop: { deliveryPoint: { name: string }; route: { transportist: { name: string } } } }>,
+  routeBarrels: Array<{ route: { transportist: { name: string } } }>
+): string {
+  switch (status) {
+    case BarrelStatus.EN_BODEGA:
+    case BarrelStatus.EN_ALISTAMIENTO:
+    case BarrelStatus.DEVUELTO:
+      return 'CEDI'
+    case BarrelStatus.EN_MANTENIMIENTO:
+      return 'Taller'
+    case BarrelStatus.ENTREGADO:
+      return routeStopBarrels[0]?.routeStop?.deliveryPoint?.name ?? '—'
+    case BarrelStatus.EN_TRANSPORTE:
+      return routeBarrels[0]?.route?.transportist?.name ?? '—'
+    case BarrelStatus.EN_RECOGIDA:
+      return routeStopBarrels[0]?.routeStop?.route?.transportist?.name ?? '—'
+    default:
+      return '—'
+  }
+}
+
 // ── Service functions ─────────────────────────────────────────────────────────
 
 export async function listBarrels(filters: {
@@ -50,10 +73,42 @@ export async function listBarrels(filters: {
       : {}),
   }
 
-  const [items, total] = await Promise.all([
-    prisma.barrel.findMany({ where, skip, take: pageSize, orderBy: { createdAt: 'desc' } }),
+  const [barrelRows, total] = await Promise.all([
+    prisma.barrel.findMany({
+      where,
+      skip,
+      take: pageSize,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        routeStopBarrels: {
+          where: { status: { in: [BarrelStopStatus.ENTREGADO, BarrelStopStatus.RECOGIDO_VACIO] } },
+          include: {
+            routeStop: {
+              include: {
+                deliveryPoint: { select: { name: true } },
+                route: { select: { transportist: { select: { name: true } } } },
+              },
+            },
+          },
+          orderBy: { deliveredAt: 'desc' },
+          take: 1,
+        },
+        routeBarrels: {
+          include: {
+            route: { select: { transportist: { select: { name: true } }, date: true } },
+          },
+          orderBy: { route: { date: 'desc' } },
+          take: 1,
+        },
+      },
+    }),
     prisma.barrel.count({ where }),
   ])
+
+  const items = barrelRows.map(({ routeStopBarrels, routeBarrels, ...barrel }) => ({
+    ...barrel,
+    ubicacion: computeUbicacion(barrel.status, routeStopBarrels, routeBarrels),
+  }))
 
   return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) }
 }

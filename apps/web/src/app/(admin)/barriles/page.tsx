@@ -161,6 +161,11 @@ export default function BarrilesPage() {
             sortable: true,
             render: row => formatDate(row.updatedAt as string),
           },
+          {
+            key: 'ubicacion',
+            header: 'Ubicación',
+            render: row => (row.ubicacion as string | undefined) ?? '—',
+          },
         ]}
       />
 
