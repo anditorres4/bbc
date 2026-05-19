@@ -156,10 +156,10 @@ export default function BarrilesPage() {
           { key: 'product', header: 'Producto', render: row => row.product ?? '—' },
           { key: 'capacity', header: 'Capacidad', render: row => `${row.capacity} L` },
           {
-            key: 'createdAt',
-            header: 'Registro',
+            key: 'updatedAt',
+            header: 'Últ. movimiento',
             sortable: true,
-            render: row => formatDate(row.createdAt as string),
+            render: row => formatDate(row.updatedAt as string),
           },
         ]}
       />
