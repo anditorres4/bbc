@@ -1,8 +1,8 @@
-import { BarrelStatus, BarrelStopStatus, EventType, RouteStatus } from '@prisma/client'
+import { AlertSeverity, AlertType, BarrelStatus, BarrelStopStatus, EventType, Role, RouteStatus } from '@prisma/client'
 import { generateQRBase64 } from '../utils/qr'
 import { prisma } from '../db/client'
 import { AppError } from '../common/errors'
-import { assertTransition } from '../services/barrelStateMachine'
+import { validateTransition } from '../services/barrelStateMachine'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -106,21 +106,45 @@ export async function updateBarrel(
   return prisma.barrel.update({ where: { id }, data })
 }
 
+// ── Alert helper (fire-and-forget) ────────────────────────────────────────────
+
+function fireIrregularAlert(message: string, barrelId?: string, routeId?: string): void {
+  prisma.alert
+    .create({
+      data: {
+        type: AlertType.NOVEDAD_EN_RUTA,
+        severity: AlertSeverity.WARNING,
+        message,
+        targetRoles: [Role.ADMIN, Role.SUPERVISOR],
+        ...(barrelId ? { barrelId } : {}),
+        ...(routeId ? { routeId } : {}),
+      },
+    })
+    .catch(err => console.error('[Alert] Error creando alerta de transición irregular:', err))
+}
+
+// ── Transition executor ───────────────────────────────────────────────────────
+
 async function executeTransition(
   id: string,
   toStatus: BarrelStatus,
   userId: string,
   extras: { routeId?: string; deliveryPointId?: string; lat?: number; lng?: number; notes?: string } = {}
-) {
+): Promise<{ barrel: Awaited<ReturnType<typeof prisma.barrel.update>>; warning?: string }> {
   const barrel = await findBarrelOrFail(id)
-  const eventType = assertTransition(barrel.status, toStatus)
+  const { result, eventType } = validateTransition(barrel.status, toStatus)
 
   const [updated] = await Promise.all([
     prisma.barrel.update({ where: { id }, data: { status: toStatus } }),
     createEvent(barrel.id, eventType, barrel.status, toStatus, userId, extras),
   ])
 
-  return updated
+  if (result.irregular && result.warning) {
+    fireIrregularAlert(result.warning, barrel.id, extras.routeId)
+    return { barrel: updated, warning: result.warning }
+  }
+
+  return { barrel: updated }
 }
 
 export async function sendToMantenimiento(id: string, userId: string, notes?: string) {
@@ -129,17 +153,22 @@ export async function sendToMantenimiento(id: string, userId: string, notes?: st
 
 export async function retornoMantenimiento(id: string, userId: string, notes?: string) {
   const barrel = await findBarrelOrFail(id)
-  if (barrel.status !== BarrelStatus.EN_MANTENIMIENTO) {
-    throw new AppError(`Transición inválida: ${barrel.status} → EN_BODEGA`, 400, 'INVALID_TRANSITION')
-  }
+  const { result, eventType } = validateTransition(barrel.status, BarrelStatus.EN_BODEGA)
+
   const [updated] = await Promise.all([
     prisma.barrel.update({
       where: { id },
       data: { status: BarrelStatus.EN_BODEGA, lastMaintenanceDate: new Date() },
     }),
-    createEvent(barrel.id, EventType.RETORNO_MANTENIMIENTO, barrel.status, BarrelStatus.EN_BODEGA, userId, { notes }),
+    createEvent(barrel.id, eventType, barrel.status, BarrelStatus.EN_BODEGA, userId, { notes }),
   ])
-  return updated
+
+  if (result.irregular && result.warning) {
+    fireIrregularAlert(result.warning, barrel.id)
+    return { barrel: updated, warning: result.warning }
+  }
+
+  return { barrel: updated }
 }
 
 export async function darDeBaja(id: string, userId: string, notes?: string) {
@@ -147,8 +176,7 @@ export async function darDeBaja(id: string, userId: string, notes?: string) {
 }
 
 export async function recibirBarril(id: string, userId: string, notes?: string) {
-  // State machine enforces EN_RECOGIDA/DEVUELTO → EN_BODEGA; invalid states throw INVALID_TRANSITION
-  const updated = await executeTransition(id, BarrelStatus.EN_BODEGA, userId, { notes })
+  const { barrel: updated, warning } = await executeTransition(id, BarrelStatus.EN_BODEGA, userId, { notes })
 
   // If this barrel was picked up as part of a route, auto-close the route when
   // all empties from that route have now been received at bodega.
@@ -180,7 +208,7 @@ export async function recibirBarril(id: string, userId: string, notes?: string) 
     }
   }
 
-  return updated
+  return { barrel: updated, warning }
 }
 
 export async function getBarrelQr(id: string) {
@@ -191,4 +219,43 @@ export async function getBarrelQr(id: string) {
     qrCode: barrel.qrCode,
     qrImage: `data:image/png;base64,${base64}`,
   }
+}
+
+export async function revertirUltimoEvento(barrelId: string, userId: string) {
+  // 1. Fetch the most recent event for this barrel
+  const lastEvent = await prisma.barrelEvent.findFirst({
+    where: { barrelId },
+    orderBy: { timestamp: 'desc' },
+  })
+  if (!lastEvent) throw new AppError('El barril no tiene eventos registrados', 400, 'NO_EVENTS')
+
+  // 2. Validate the 5-minute window
+  const ageMs = Date.now() - lastEvent.timestamp.getTime()
+  if (ageMs > 5 * 60 * 1000) {
+    throw new AppError(
+      'Solo se puede revertir el último escaneo en los primeros 5 minutos',
+      400,
+      'REVERT_WINDOW_EXPIRED'
+    )
+  }
+
+  // 3. The previous status is stored in the event's fromStatus
+  const previousStatus = lastEvent.fromStatus
+  if (previousStatus === null) {
+    throw new AppError('No se puede revertir el evento de registro inicial', 400, 'CANNOT_REVERT_REGISTRATION')
+  }
+
+  // 4. Read current barrel status for the reversal event
+  const barrel = await findBarrelOrFail(barrelId)
+  const currentStatus = barrel.status
+
+  // 5. Update barrel status back to what it was before the last event
+  const [updated] = await Promise.all([
+    prisma.barrel.update({ where: { id: barrelId }, data: { status: previousStatus } }),
+    createEvent(barrelId, EventType.NOVEDAD, currentStatus, previousStatus, userId, {
+      notes: 'Reversión de escaneo — operador',
+    }),
+  ])
+
+  return updated
 }

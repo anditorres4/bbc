@@ -103,8 +103,8 @@ router.post(
     try {
       const id = req.params['id'] as string
       const { notes } = req.body as { notes?: string }
-      const barrel = await svc.sendToMantenimiento(id, req.user!.id, notes)
-      return res.json({ data: barrel })
+      const { barrel, warning } = await svc.sendToMantenimiento(id, req.user!.id, notes)
+      return res.json({ data: barrel, ...(warning ? { warning } : {}) })
     } catch (err) {
       return handleError(err, res)
     }
@@ -121,8 +121,8 @@ router.post(
     try {
       const id = req.params['id'] as string
       const { notes } = req.body as { notes?: string }
-      const barrel = await svc.retornoMantenimiento(id, req.user!.id, notes)
-      return res.json({ data: barrel })
+      const { barrel, warning } = await svc.retornoMantenimiento(id, req.user!.id, notes)
+      return res.json({ data: barrel, ...(warning ? { warning } : {}) })
     } catch (err) {
       return handleError(err, res)
     }
@@ -139,8 +139,8 @@ router.post(
     try {
       const id = req.params['id'] as string
       const { notes } = req.body as { notes?: string }
-      const barrel = await svc.darDeBaja(id, req.user!.id, notes)
-      return res.json({ data: barrel })
+      const { barrel, warning } = await svc.darDeBaja(id, req.user!.id, notes)
+      return res.json({ data: barrel, ...(warning ? { warning } : {}) })
     } catch (err) {
       return handleError(err, res)
     }
@@ -156,12 +156,23 @@ router.post(
     try {
       const id = req.params['id'] as string
       const { notes } = req.body as { notes?: string }
-      const barrel = await svc.recibirBarril(id, req.user!.id, notes)
-      return res.json({ data: barrel })
+      const { barrel, warning } = await svc.recibirBarril(id, req.user!.id, notes)
+      return res.json({ data: barrel, ...(warning ? { warning } : {}) })
     } catch (err) {
       return handleError(err, res)
     }
   }
 )
+
+// ── POST /api/barriles/:id/revertir-ultimo ────────────────────────────────────
+router.post('/:id/revertir-ultimo', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params['id'] as string
+    const barrel = await svc.revertirUltimoEvento(id, req.user!.id)
+    return res.json({ data: barrel })
+  } catch (err) {
+    return handleError(err, res)
+  }
+})
 
 export { router as barrilesRouter }

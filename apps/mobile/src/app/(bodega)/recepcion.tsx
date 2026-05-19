@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import { ArrowLeft, Package } from 'lucide-react-native'
+import { ArrowLeft, Package, RotateCcw } from 'lucide-react-native'
 import { api, OfflineError } from '@/lib/api'
 import { enqueue, incrementSessionCount } from '@/lib/offline'
 import { QRScanner } from '@/components/QRScanner'
@@ -14,6 +14,26 @@ export default function RecepcionScreen() {
   const router = useRouter()
   const [received, setReceived] = useState<Barrel[]>([])
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  function showSuccess(msg: string) {
+    clearTimeout(successTimerRef.current)
+    setSuccessMsg(msg)
+    successTimerRef.current = setTimeout(() => setSuccessMsg(null), 2500)
+  }
+
+  async function handleDeshacer(barrel: Barrel) {
+    setErrorMsg(null)
+    try {
+      await api.post(`/api/barriles/${barrel.id}/revertir-ultimo`, {})
+      setReceived(prev => prev.filter(b => b.id !== barrel.id))
+      showSuccess(`Barril ${barrel.id} revertido`)
+    } catch (err) {
+      const e = err as { message?: string }
+      setErrorMsg(e?.message ?? 'Error al revertir barril')
+    }
+  }
 
   async function handleResult(result: BarrelScanResult, action: string) {
     if (action === 'cancel') return
@@ -48,6 +68,12 @@ export default function RecepcionScreen() {
         <QRScanner context="recepcion" onResult={handleResult} onClose={() => router.back()} />
       </View>
 
+      {successMsg && (
+        <View style={styles.successBanner}>
+          <Text style={styles.successText}>{successMsg}</Text>
+        </View>
+      )}
+
       {errorMsg && (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{errorMsg}</Text>
@@ -76,6 +102,13 @@ export default function RecepcionScreen() {
                 )}
               </View>
               <BarrelStatusBadge status={item.status} />
+              <TouchableOpacity
+                onPress={() => handleDeshacer(item)}
+                style={styles.undoBtn}
+                accessibilityLabel="Deshacer"
+              >
+                <RotateCcw size={18} color={theme.textSecondary} />
+              </TouchableOpacity>
             </View>
           )}
         />
@@ -97,6 +130,13 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   title: { fontSize: 18, fontWeight: 'bold', color: theme.text },
   scannerContainer: { height: 320 },
+  successBanner: {
+    backgroundColor: 'rgba(34,197,94,0.9)',
+    padding: spacing.sm,
+    margin: spacing.md,
+    borderRadius: radius.sm,
+  },
+  successText: { color: '#fff', fontSize: 13, textAlign: 'center' },
   errorBanner: {
     backgroundColor: 'rgba(239,68,68,0.9)',
     padding: spacing.sm,
@@ -129,4 +169,5 @@ const styles = StyleSheet.create({
   },
   barrelId: { color: theme.text, fontWeight: '600', fontSize: 15 },
   barrelProduct: { color: theme.textSecondary, fontSize: 13, marginTop: 2 },
+  undoBtn: { padding: 6, marginLeft: spacing.sm },
 })

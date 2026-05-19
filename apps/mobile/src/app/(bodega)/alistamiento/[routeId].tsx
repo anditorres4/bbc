@@ -5,7 +5,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { ArrowLeft, ScanLine, CheckCircle2, Package } from 'lucide-react-native'
+import { ArrowLeft, ScanLine, CheckCircle2, Package, RotateCcw } from 'lucide-react-native'
 import { api } from '@/lib/api'
 import { incrementSessionCount } from '@/lib/offline'
 import { QRScanner } from '@/components/QRScanner'
@@ -104,6 +104,15 @@ export default function AlistamientoDetailScreen() {
   )
   const totalScanned = scannedBarrels.size
   const progress = totalRequired > 0 ? totalScanned / totalRequired : 0
+
+  function handleDeshacerAlistamiento(barrelId: string) {
+    setScannedBarrels(prev => {
+      const next = new Map(prev)
+      next.delete(barrelId)
+      return next
+    })
+    showToast(`Barril ${barrelId} eliminado de la lista`)
+  }
 
   function handleScanResult(result: BarrelScanResult, action: string): string | void {
     if (action === 'cancel') return
@@ -226,6 +235,13 @@ export default function AlistamientoDetailScreen() {
                 <CheckCircle2 size={16} color={theme.amber} />
                 <Text style={styles.barrelId}>{barrelId}</Text>
                 <Text style={styles.barrelProduct}>{product}</Text>
+                <TouchableOpacity
+                  onPress={() => handleDeshacerAlistamiento(barrelId)}
+                  style={styles.undoBtn}
+                  accessibilityLabel="Deshacer"
+                >
+                  <RotateCcw size={16} color={theme.textSecondary} />
+                </TouchableOpacity>
               </View>
             ))}
           </>
@@ -358,6 +374,7 @@ const styles = StyleSheet.create({
   },
   barrelId: { color: theme.text, fontSize: 14, fontWeight: '500', flex: 1 },
   barrelProduct: { color: theme.textSecondary, fontSize: 13 },
+  undoBtn: { padding: 6, marginLeft: spacing.sm },
   errorText: {
     color: '#ef4444',
     fontSize: 13,
