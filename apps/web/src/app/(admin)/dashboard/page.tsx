@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { Package, Truck, Warehouse, Bell } from 'lucide-react'
+import { Package, Truck, Warehouse, MapPin } from 'lucide-react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import { StatCard } from '@/components/StatCard'
@@ -14,13 +14,13 @@ function useBarrelStats() {
   return useQuery({
     queryKey: ['barrels', 'stats'],
     queryFn: async () => {
-      const [all, bodega, transporte, alertas] = await Promise.all([
+      const [all, bodega, transporte, entregado] = await Promise.all([
         api.get<PaginatedResponse<Barrel>>('/api/barriles?pageSize=1'),
         api.get<PaginatedResponse<Barrel>>('/api/barriles?status=EN_BODEGA&pageSize=1'),
         api.get<PaginatedResponse<Barrel>>('/api/barriles?status=EN_TRANSPORTE&pageSize=1'),
-        api.get<PaginatedResponse<Alert>>('/api/alertas?isRead=false&pageSize=1'),
+        api.get<PaginatedResponse<Barrel>>('/api/barriles?status=ENTREGADO&pageSize=1'),
       ])
-      return { all: all.total, bodega: bodega.total, transporte: transporte.total, alertas: alertas.total }
+      return { all: all.total, bodega: bodega.total, transporte: transporte.total, entregado: entregado.total }
     },
   })
 }
@@ -69,7 +69,7 @@ export default function DashboardPage() {
             <StatCard label="Total barriles" value={stats?.all ?? 0} icon={<Package className="h-5 w-5" />} />
             <StatCard label="En ruta" value={stats?.transporte ?? 0} icon={<Truck className="h-5 w-5" />} />
             <StatCard label="En bodega" value={stats?.bodega ?? 0} icon={<Warehouse className="h-5 w-5" />} />
-            <StatCard label="Alertas activas" value={stats?.alertas ?? 0} icon={<Bell className="h-5 w-5" />} />
+            <StatCard label="En puntos de entrega" value={stats?.entregado ?? 0} icon={<MapPin className="h-5 w-5" />} />
           </>
         }
       </div>
