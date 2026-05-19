@@ -1,4 +1,4 @@
-import { BarrelStatus, BarrelStopStatus, EventType, NovedadType, RouteStatus, StopStatus } from '@prisma/client'
+import { AlertSeverity, AlertType, BarrelStatus, BarrelStopStatus, EventType, NovedadType, Role, RouteStatus, StopStatus } from '@prisma/client'
 import { prisma } from '../db/client'
 import { AppError } from '../common/errors'
 import { alertStream } from '../services/alertStream'
@@ -199,11 +199,18 @@ export async function iniciarRuta(id: string, barrelIds: string[], userId: strin
   }
   const notReady = barrels.filter(b => b.status !== BarrelStatus.EN_BODEGA)
   if (notReady.length > 0) {
-    throw new AppError(
-      `Barriles no disponibles (no están EN_BODEGA): ${notReady.map(b => `${b.id}(${b.status})`).join(', ')}`,
-      409,
-      'BARREL_NOT_AVAILABLE'
-    )
+    notReady.forEach(b => {
+      prisma.alert.create({
+        data: {
+          type: AlertType.NOVEDAD_EN_RUTA,
+          severity: AlertSeverity.WARNING,
+          message: `Barril ${b.id} cargado en ruta ${id} con estado irregular: ${b.status}`,
+          targetRoles: [Role.ADMIN, Role.SUPERVISOR],
+          barrelId: b.id,
+          routeId: id,
+        },
+      }).catch(err => console.error('[Alert] Error creando alerta de carga irregular:', err))
+    })
   }
 
   // Validate all requirements are fulfilled

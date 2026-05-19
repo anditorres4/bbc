@@ -5,7 +5,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { ArrowLeft, ScanLine, CheckCircle2, Package, RotateCcw } from 'lucide-react-native'
+import { AlertTriangle, ArrowLeft, ScanLine, CheckCircle2, Package, RotateCcw } from 'lucide-react-native'
 import { api } from '@/lib/api'
 import { incrementSessionCount } from '@/lib/offline'
 import { QRScanner } from '@/components/QRScanner'
@@ -42,8 +42,8 @@ export default function AlistamientoDetailScreen() {
   const [route, setRoute] = useState<Route | null>(null)
   const [loading, setLoading] = useState(true)
   const [scannerVisible, setScannerVisible] = useState(false)
-  // Map of barrelId → product for scanned barrels
-  const [scannedBarrels, setScannedBarrels] = useState<Map<string, string>>(new Map())
+  // Map of barrelId → { product, irregular } for scanned barrels
+  const [scannedBarrels, setScannedBarrels] = useState<Map<string, { product: string; irregular: boolean }>>(new Map())
   const [toast, setToast] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -76,7 +76,7 @@ export default function AlistamientoDetailScreen() {
   // Count scanned barrels by product
   const scannedByProduct = useMemo<Map<string, number>>(() => {
     const map = new Map<string, number>()
-    for (const product of scannedBarrels.values()) {
+    for (const { product } of scannedBarrels.values()) {
       map.set(product, (map.get(product) ?? 0) + 1)
     }
     return map
@@ -137,7 +137,11 @@ export default function AlistamientoDetailScreen() {
       return `Todos los barriles de "${product}" ya escaneados`
     }
 
-    setScannedBarrels(prev => new Map(prev).set(barrelId, product))
+    const irregular = result.barrel.status !== 'EN_BODEGA'
+    if (irregular) {
+      showToast(`⚠️ ${barrelId} está en estado ${result.barrel.status} — se notificará a supervisión`)
+    }
+    setScannedBarrels(prev => new Map(prev).set(barrelId, { product, irregular }))
     incrementSessionCount()
   }
 
@@ -230,9 +234,12 @@ export default function AlistamientoDetailScreen() {
         {scannedBarrels.size > 0 && (
           <>
             <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Barriles escaneados</Text>
-            {Array.from(scannedBarrels.entries()).map(([barrelId, product]) => (
+            {Array.from(scannedBarrels.entries()).map(([barrelId, { product, irregular }]) => (
               <View key={barrelId} style={styles.barrelRow}>
-                <CheckCircle2 size={16} color={theme.amber} />
+                {irregular
+                  ? <AlertTriangle size={16} color="#f97316" />
+                  : <CheckCircle2 size={16} color={theme.amber} />
+                }
                 <Text style={styles.barrelId}>{barrelId}</Text>
                 <Text style={styles.barrelProduct}>{product}</Text>
                 <TouchableOpacity
