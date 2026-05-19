@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
-import { BarrelStatus, Role, RouteStatus } from '@prisma/client'
+import { BarrelStatus, EventType, Role, RouteStatus } from '@prisma/client'
 import { authenticate, AuthRequest } from '../middleware/authenticate'
 import { authorize } from '../middleware/authorize'
 import { handleError } from '../common/errors'
@@ -128,12 +128,38 @@ router.get(
         },
       })
 
+      // 8. Barrels currently at each delivery point
+      const barrilesPorPuntoRaw = await prisma.routeStopBarrel.findMany({
+        where: { status: 'ENTREGADO' },
+        include: {
+          routeStop: { select: { deliveryPoint: { select: { id: true, name: true } } } },
+        },
+      })
+      const pointMap = new Map<string, { name: string; count: number }>()
+      for (const rsb of barrilesPorPuntoRaw) {
+        const dp = rsb.routeStop.deliveryPoint
+        const entry = pointMap.get(dp.id) ?? { name: dp.name, count: 0 }
+        entry.count++
+        pointMap.set(dp.id, entry)
+      }
+      const barrilesPorPunto = [...pointMap.values()].sort((a, b) => b.count - a.count)
+
+      // 9. CEDI metrics
+      const [enBodegaAhora, salidasPeriodo, retornosPeriodo] = await Promise.all([
+        prisma.barrel.count({ where: { status: BarrelStatus.EN_BODEGA } }),
+        prisma.barrelEvent.count({ where: { type: EventType.SALIDA_BODEGA, timestamp: { gte: cutoff, lte: cutoffTo } } }),
+        prisma.barrelEvent.count({ where: { type: EventType.RETORNO_BODEGA, timestamp: { gte: cutoff, lte: cutoffTo } } }),
+      ])
+      const cediMetrics = { enBodegaAhora, salidasPeriodo, retornosPeriodo }
+
       return res.json({
         barrilesXEstado,
         barrilesXProducto,
         rutasPorDia,
         topPuntosEntrega,
         alertasPorSeveridad,
+        barrilesPorPunto,
+        cediMetrics,
         summary: {
           totalBarrels,
           activeRoutes,

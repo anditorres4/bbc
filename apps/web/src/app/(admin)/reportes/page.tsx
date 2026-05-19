@@ -7,7 +7,7 @@ import { getAccessToken } from '@/lib/auth'
 import { getLocalDateInputValue } from '@/lib/utils'
 import {
   BarChart2, Package, Truck, Bell, AlertTriangle,
-  CheckCircle2, MapPin, TrendingUp, Download, Calendar,
+  CheckCircle2, MapPin, TrendingUp, Download, Calendar, Warehouse,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,8 @@ interface ReportData {
   rutasPorDia: { date: string; total: number; completadas: number; canceladas: number; conNovedad: number }[]
   topPuntosEntrega: { name: string; address: string; totalEntregas: number; totalRecogidas: number; visitasCompletadas: number }[]
   alertasPorSeveridad: { severity: string; count: number }[]
+  barrilesPorPunto: { name: string; count: number }[]
+  cediMetrics: { enBodegaAhora: number; salidasPeriodo: number; retornosPeriodo: number }
   summary: { totalBarrels: number; activeRoutes: number; unreadAlerts: number; sinMovimiento60d: number }
   dateRange?: { from: string; to: string }
 }
@@ -357,6 +359,50 @@ export default function ReportesPage() {
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
                 <span className="text-sm font-medium text-green-700">Sin alertas en este período</span>
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Métricas CEDI */}
+        <div className="rounded-xl border bg-white p-5 lg:col-span-2">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-stone-700 uppercase tracking-wide">
+            <Warehouse className="h-4 w-4 text-amber-600" />
+            Métricas CEDI
+          </h2>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-lg bg-stone-50 p-4 text-center">
+              <p className="text-3xl font-bold text-stone-900">{data.cediMetrics.enBodegaAhora}</p>
+              <p className="mt-1 text-sm text-stone-500">En bodega ahora</p>
+            </div>
+            <div className="rounded-lg bg-amber-50 p-4 text-center">
+              <p className="text-3xl font-bold text-amber-700">{data.cediMetrics.salidasPeriodo}</p>
+              <p className="mt-1 text-sm text-stone-500">Salidas (período)</p>
+            </div>
+            <div className="rounded-lg bg-green-50 p-4 text-center">
+              <p className="text-3xl font-bold text-green-700">{data.cediMetrics.retornosPeriodo}</p>
+              <p className="mt-1 text-sm text-stone-500">Ingresos (período)</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Barriles en puntos ahora */}
+        <div className="rounded-xl border bg-white p-5">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-stone-700 uppercase tracking-wide">
+            <MapPin className="h-4 w-4 text-amber-600" />
+            Barriles en puntos ahora
+          </h2>
+          <div className="space-y-3">
+            {data.barrilesPorPunto.map(p => (
+              <div key={p.name}>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="font-medium text-stone-700 truncate max-w-[70%]">{p.name}</span>
+                  <span className="text-stone-500">{p.count}</span>
+                </div>
+                <HBar value={p.count} max={Math.max(...data.barrilesPorPunto.map(x => x.count), 1)} colorClass="bg-green-500" />
+              </div>
+            ))}
+            {data.barrilesPorPunto.length === 0 && (
+              <p className="text-center text-sm text-stone-400 py-4">Sin barriles entregados actualmente</p>
             )}
           </div>
         </div>
