@@ -6,6 +6,7 @@ import {
 } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as Haptics from 'expo-haptics'
+import { playSuccess, playError } from '@/lib/sounds'
 import { X, RefreshCw } from 'lucide-react-native'
 import { api, OfflineError } from '@/lib/api'
 import { BarrelStatusBadge } from './BarrelStatusBadge'
@@ -102,7 +103,7 @@ export type ScannerContext =
 
 interface Props {
   context: ScannerContext
-  onResult: (result: BarrelScanResult, action: string) => string | void | Promise<string | void>
+  onResult: (result: BarrelScanResult, action: string) => string | void | { warning: string } | Promise<string | void | { warning: string }>
   onClose: () => void
   autoConfirm?: boolean
 }
@@ -116,6 +117,7 @@ export function QRScanner({ context, onResult, onClose, autoConfirm = false }: P
   const [showManual, setShowManual] = useState(false)
   const [facing, setFacing] = useState<'front' | 'back'>('back')
   const [scanSuccess, setScanSuccess] = useState<string | null>(null)
+  const [scanWarning, setScanWarning] = useState<string | null>(null)
 
   const lastScanRef = useRef<number>(0)
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current
@@ -173,11 +175,23 @@ export function QRScanner({ context, onResult, onClose, autoConfirm = false }: P
     try {
       const data = await api.post<BarrelScanResult>('/api/barriles/scan', { qrCode })
       if (autoConfirm) {
-        const rejection = await onResult(data, primaryAction)
-        if (rejection) {
-          setError(rejection)
+        const callbackResult = await onResult(data, primaryAction)
+        if (callbackResult && typeof callbackResult === 'object' && 'warning' in callbackResult) {
+          // Irregular transition: success but with warning — show yellow/orange banner
+          setScanWarning(callbackResult.warning)
+          setScanSuccess(null)
+          setTimeout(() => {
+            setScanWarning(null)
+            lastScanRef.current = 0
+          }, 2500)
+        } else if (callbackResult) {
+          // String rejection: show red error banner
+          playError()
+          setError(callbackResult as string)
           lastScanRef.current = 0
         } else {
+          // Normal success: show green banner
+          playSuccess()
           setScanSuccess(data.barrel.id)
           setTimeout(() => {
             setScanSuccess(null)
@@ -189,6 +203,7 @@ export function QRScanner({ context, onResult, onClose, autoConfirm = false }: P
         showSheet()
       }
     } catch (err) {
+      playError()
       lastScanRef.current = 0
       if (err instanceof OfflineError) {
         setError('Sin conexión — reintenta cuando haya red')
@@ -207,10 +222,12 @@ export function QRScanner({ context, onResult, onClose, autoConfirm = false }: P
     lastScanRef.current = now
     if (!BBC_QR_RE.test(data)) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      playError()
       setError('QR no reconocido — solo se aceptan barriles BBC')
       return
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
+    playSuccess()
     processQrCode(data)
   }
 
@@ -382,6 +399,12 @@ export function QRScanner({ context, onResult, onClose, autoConfirm = false }: P
       {scanSuccess && (
         <View style={styles.successBanner}>
           <Text style={styles.successText}>✓ {scanSuccess} escaneado</Text>
+        </View>
+      )}
+
+      {scanWarning && (
+        <View style={styles.warningBanner}>
+          <Text style={styles.warningText}>⚠ {scanWarning}</Text>
         </View>
       )}
 
@@ -578,6 +601,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   successText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  warningBanner: {
+    position: 'absolute',
+    bottom: 200,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(234,121,0,0.93)',
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  warningText: { color: '#fff', fontSize: 14, fontWeight: '700', textAlign: 'center' },
   permCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   permText: { color: theme.text, fontSize: 15, textAlign: 'center', paddingHorizontal: 32 },
   permButton: {

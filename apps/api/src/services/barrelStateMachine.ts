@@ -1,7 +1,21 @@
 import { BarrelStatus, EventType } from '@prisma/client'
-import { AppError } from '../common/errors'
 
 type TransitionDef = { to: BarrelStatus; event: EventType }
+
+export type TransitionResult = { allowed: true; irregular: boolean; warning?: string }
+
+// When a transition is irregular we still need an EventType to record the event.
+// We map the target status to the most semantically appropriate event type.
+const IRREGULAR_EVENT_FALLBACK: Record<BarrelStatus, EventType> = {
+  EN_BODEGA: EventType.RETORNO_BODEGA,
+  EN_ALISTAMIENTO: EventType.ALISTAMIENTO,
+  EN_TRANSPORTE: EventType.SALIDA_BODEGA,
+  ENTREGADO: EventType.ENTREGA_LLENO,
+  EN_RECOGIDA: EventType.RECOGIDA_VACIO,
+  DEVUELTO: EventType.RETORNO_BODEGA,
+  EN_MANTENIMIENTO: EventType.ENVIO_MANTENIMIENTO,
+  BAJA: EventType.DISPOSICION_FINAL,
+}
 
 const TRANSITIONS: Record<BarrelStatus, TransitionDef[]> = {
   EN_BODEGA: [
@@ -36,12 +50,31 @@ const TRANSITIONS: Record<BarrelStatus, TransitionDef[]> = {
   BAJA: [],
 }
 
-export function assertTransition(from: BarrelStatus, to: BarrelStatus): EventType {
+/**
+ * Validates a barrel state transition.
+ * Always returns { allowed: true }. Regular transitions set irregular=false;
+ * irregular transitions set irregular=true and include a warning message.
+ * The caller is responsible for creating an alert when irregular=true.
+ */
+export function validateTransition(
+  from: BarrelStatus,
+  to: BarrelStatus
+): { result: TransitionResult; eventType: EventType } {
   const match = (TRANSITIONS[from] ?? []).find(t => t.to === to)
-  if (!match) {
-    throw new AppError(`Transición inválida: ${from} → ${to}`, 400, 'INVALID_TRANSITION')
+  if (match) {
+    return { result: { allowed: true, irregular: false }, eventType: match.event }
   }
-  return match.event
+  const warning = `Transición irregular: ${from} → ${to}`
+  return {
+    result: { allowed: true, irregular: true, warning },
+    eventType: IRREGULAR_EVENT_FALLBACK[to] ?? EventType.NOVEDAD,
+  }
+}
+
+/** @deprecated Use validateTransition instead */
+export function assertTransition(from: BarrelStatus, to: BarrelStatus): EventType {
+  const { eventType } = validateTransition(from, to)
+  return eventType
 }
 
 export function availableTransitions(from: BarrelStatus): TransitionDef[] {
