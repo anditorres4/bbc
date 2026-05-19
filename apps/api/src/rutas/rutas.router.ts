@@ -208,6 +208,34 @@ router.post(
   }
 )
 
+// ── PATCH /api/rutas/:id/paradas/:stopId/no-entregable ────────────────────────
+router.patch(
+  '/:id/paradas/:stopId/no-entregable',
+  authenticate,
+  authorize('TRANSPORTISTA', 'SUPERVISOR', 'ADMIN'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const schema = z.object({
+        novedadType: z.nativeEnum(NovedadType).optional(),
+        comentario: z.string().optional(),
+      })
+      const parsed = schema.safeParse(req.body)
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
+
+      const alert = await svc.markStopUndeliverable(
+        req.params['id'] as string,
+        req.params['stopId'] as string,
+        req.user!.id,
+        parsed.data.novedadType,
+        parsed.data.comentario
+      )
+      return res.status(201).json({ data: alert })
+    } catch (err) {
+      return handleError(err, res)
+    }
+  }
+)
+
 // ── POST /api/rutas/:id/stops/:stopId/novedad ─────────────────────────────────
 router.post(
   '/:id/stops/:stopId/novedad',

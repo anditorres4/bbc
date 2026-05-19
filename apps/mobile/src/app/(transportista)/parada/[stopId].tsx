@@ -18,6 +18,15 @@ import type { RouteStop, BarrelScanResult } from '@/lib/types'
 
 type GpsCoords = { lat: number; lng: number } | null
 type ScanMode = 'entrega' | 'recogida_vacio'
+type NovedadMode = 'novedad' | 'no-entregable'
+
+const NOVEDAD_TYPES = [
+  { value: 'CLIENTE_AUSENTE',      label: 'Cliente ausente' },
+  { value: 'BARRIL_DANADO',        label: 'Barril dañado' },
+  { value: 'PRODUCTO_INCORRECTO',  label: 'Producto incorrecto' },
+  { value: 'ACCIDENTE',            label: 'Accidente' },
+  { value: 'OTRO',                 label: 'Otro' },
+] as const
 
 function Toast({ message }: { message: string | null }) {
   if (!message) return null
@@ -53,8 +62,11 @@ export default function ParadaDetailScreen() {
   const [scanMode, setScanMode] = useState<ScanMode>('entrega')
   const [scannerVisible, setScannerVisible] = useState(false)
   const [novedadVisible, setNovedadVisible] = useState(false)
+  const [novedadMode, setNovedadMode] = useState<NovedadMode>('novedad')
   const [novedadText, setNovedadText] = useState('')
   const [novedadType, setNovedadType] = useState<string>('')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [comentario, setComentario] = useState('')
   const [novedadLoading, setNovedadLoading] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -189,6 +201,23 @@ export default function ParadaDetailScreen() {
     }
   }, [allDelivered, scannerVisible, scanMode])
 
+  function openNovedadModal(mode: NovedadMode) {
+    setNovedadMode(mode)
+    setNovedadText('')
+    setNovedadType('')
+    setComentario('')
+    setDropdownOpen(false)
+    setNovedadVisible(true)
+  }
+
+  function closeNovedadModal() {
+    setNovedadVisible(false)
+    setNovedadText('')
+    setNovedadType('')
+    setComentario('')
+    setDropdownOpen(false)
+  }
+
   async function submitNovedad() {
     if (!novedadText.trim() || novedadLoading) return
     setNovedadLoading(true)
@@ -197,10 +226,34 @@ export default function ParadaDetailScreen() {
         description: novedadText.trim(),
         ...(novedadType ? { novedadType } : {}),
       })
-      setNovedadVisible(false)
-      setNovedadText('')
+      closeNovedadModal()
       if (res.queued) {
         showToast('Novedad guardada localmente — se enviará al reconectar')
+      } else if (res.error) {
+        showToast(res.error)
+      } else {
+        await loadStop(true)
+      }
+    } finally {
+      setNovedadLoading(false)
+    }
+  }
+
+  async function marcarNoEntregable() {
+    if (novedadLoading) return
+    setNovedadLoading(true)
+    try {
+      const res = await apiCall(
+        `/api/rutas/${routeId}/paradas/${stopId}/no-entregable`,
+        'PATCH',
+        {
+          ...(novedadType ? { novedadType } : {}),
+          ...(comentario.trim() ? { comentario: comentario.trim() } : {}),
+        }
+      )
+      closeNovedadModal()
+      if (res.queued) {
+        showToast('Marcado como no entregable — se enviará al reconectar')
       } else if (res.error) {
         showToast(res.error)
       } else {
@@ -378,10 +431,19 @@ export default function ParadaDetailScreen() {
         {/* Registrar novedad */}
         <TouchableOpacity
           style={styles.novedadBtn}
-          onPress={() => setNovedadVisible(true)}
+          onPress={() => openNovedadModal('novedad')}
         >
           <AlertTriangle size={18} color={theme.orange} />
           <Text style={styles.novedadBtnText}>Registrar novedad</Text>
+        </TouchableOpacity>
+
+        {/* Punto no entregable */}
+        <TouchableOpacity
+          style={styles.noEntregableBtn}
+          onPress={() => openNovedadModal('no-entregable')}
+        >
+          <AlertTriangle size={18} color="#fff" />
+          <Text style={styles.noEntregableBtnText}>Punto no entregable</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -416,12 +478,12 @@ export default function ParadaDetailScreen() {
         />
       </Modal>
 
-      {/* Novedad modal */}
+      {/* Novedad / No-entregable modal */}
       <Modal
         visible={novedadVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setNovedadVisible(false)}
+        onRequestClose={closeNovedadModal}
       >
         <KeyboardAvoidingView
           style={styles.novedadOverlay}
@@ -429,55 +491,102 @@ export default function ParadaDetailScreen() {
         >
           <View style={styles.novedadSheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.novedadTitle}>Registrar novedad</Text>
+            <Text style={styles.novedadTitle}>
+              {novedadMode === 'no-entregable' ? 'Marcar como No Entregable' : 'Registrar novedad'}
+            </Text>
 
-            {/* Tipo de novedad */}
-            <View style={styles.novedadTypeRow}>
-              {(['CLIENTE_AUSENTE', 'BARRIL_DANADO', 'PRODUCTO_INCORRECTO', 'ACCIDENTE', 'OTRO'] as const).map(type => (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.novedadTypeChip, novedadType === type && styles.novedadTypeChipActive]}
-                  onPress={() => setNovedadType(novedadType === type ? '' : type)}
-                >
-                  <Text style={[styles.novedadTypeChipText, novedadType === type && styles.novedadTypeChipTextActive]}>
-                    {type === 'CLIENTE_AUSENTE' ? 'Cliente ausente'
-                      : type === 'BARRIL_DANADO' ? 'Barril dañado'
-                      : type === 'PRODUCTO_INCORRECTO' ? 'Prod. incorrecto'
-                      : type === 'ACCIDENTE' ? 'Accidente'
-                      : 'Otro'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {/* Tipo de novedad — dropdown */}
+            <Text style={styles.fieldLabel}>Tipo (opcional)</Text>
+            <TouchableOpacity
+              style={styles.dropdownTrigger}
+              onPress={() => setDropdownOpen(o => !o)}
+              activeOpacity={0.8}
+            >
+              <Text style={novedadType ? styles.dropdownValueSelected : styles.dropdownValuePlaceholder}>
+                {novedadType
+                  ? (NOVEDAD_TYPES.find(t => t.value === novedadType)?.label ?? novedadType)
+                  : 'Seleccionar tipo...'}
+              </Text>
+              <Text style={styles.dropdownCaret}>{dropdownOpen ? '▲' : '▼'}</Text>
+            </TouchableOpacity>
+            {dropdownOpen && (
+              <View style={styles.dropdownList}>
+                {NOVEDAD_TYPES.map(t => (
+                  <TouchableOpacity
+                    key={t.value}
+                    style={[styles.dropdownItem, novedadType === t.value && styles.dropdownItemActive]}
+                    onPress={() => { setNovedadType(t.value); setDropdownOpen(false) }}
+                  >
+                    <Text style={[styles.dropdownItemText, novedadType === t.value && styles.dropdownItemTextActive]}>
+                      {t.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
+            {/* Description field — required for novedad, optional for no-entregable */}
+            {novedadMode === 'novedad' && (
+              <>
+                <Text style={[styles.fieldLabel, { marginTop: spacing.sm }]}>Descripción</Text>
+                <TextInput
+                  style={styles.novedadInput}
+                  value={novedadText}
+                  onChangeText={setNovedadText}
+                  placeholder="Describe la novedad..."
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </>
+            )}
+
+            {/* Comentario libre — shown in both modes */}
+            <Text style={[styles.fieldLabel, { marginTop: novedadMode === 'novedad' ? 0 : spacing.sm }]}>
+              {novedadMode === 'no-entregable' ? 'Comentario (opcional)' : 'Comentario adicional (opcional)'}
+            </Text>
             <TextInput
               style={styles.novedadInput}
-              value={novedadText}
-              onChangeText={setNovedadText}
-              placeholder="Describe la novedad..."
+              value={comentario}
+              onChangeText={setComentario}
+              placeholder="Agrega un comentario..."
               placeholderTextColor={theme.textSecondary}
               multiline
-              numberOfLines={4}
+              numberOfLines={3}
               textAlignVertical="top"
             />
 
             <View style={styles.novedadActions}>
               <TouchableOpacity
                 style={styles.novedadCancel}
-                onPress={() => { setNovedadVisible(false); setNovedadText(''); setNovedadType('') }}
+                onPress={closeNovedadModal}
               >
                 <Text style={styles.novedadCancelText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.novedadSubmit, (!novedadText.trim() || novedadLoading) && styles.novedadSubmitDisabled]}
-                onPress={submitNovedad}
-                disabled={!novedadText.trim() || novedadLoading}
-              >
-                {novedadLoading
-                  ? <ActivityIndicator color="#000" size="small" />
-                  : <Text style={styles.novedadSubmitText}>Registrar</Text>
-                }
-              </TouchableOpacity>
+              {novedadMode === 'novedad' ? (
+                <TouchableOpacity
+                  style={[styles.novedadSubmit, (!novedadText.trim() || novedadLoading) && styles.novedadSubmitDisabled]}
+                  onPress={submitNovedad}
+                  disabled={!novedadText.trim() || novedadLoading}
+                >
+                  {novedadLoading
+                    ? <ActivityIndicator color="#000" size="small" />
+                    : <Text style={styles.novedadSubmitText}>Registrar</Text>
+                  }
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.noEntregableSubmit, novedadLoading && styles.novedadSubmitDisabled]}
+                  onPress={marcarNoEntregable}
+                  disabled={novedadLoading}
+                >
+                  {novedadLoading
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.noEntregableSubmitText}>Confirmar</Text>
+                  }
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -679,26 +788,67 @@ const styles = StyleSheet.create({
     color: theme.text,
     marginBottom: spacing.md,
   },
-  novedadTypeRow: {
+  noEntregableBtn: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginBottom: spacing.md,
+    alignItems: 'center',
+    gap: 10,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    backgroundColor: '#dc2626',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#b91c1c',
   },
-  novedadTypeChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
+  noEntregableBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  fieldLabel: {
+    color: theme.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: theme.border,
-    backgroundColor: theme.card,
+    borderRadius: radius.sm,
+    backgroundColor: theme.bg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    marginBottom: 4,
   },
-  novedadTypeChipActive: {
-    borderColor: theme.orange,
-    backgroundColor: 'rgba(249,115,22,0.1)',
+  dropdownValuePlaceholder: { color: theme.textSecondary, fontSize: 14 },
+  dropdownValueSelected: { color: theme.text, fontSize: 14, fontWeight: '500' },
+  dropdownCaret: { color: theme.textSecondary, fontSize: 12 },
+  dropdownList: {
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: radius.sm,
+    backgroundColor: theme.bg,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
   },
-  novedadTypeChipText: { color: theme.textSecondary, fontSize: 12, fontWeight: '500' },
-  novedadTypeChipTextActive: { color: theme.orange, fontWeight: '700' },
+  dropdownItem: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  dropdownItemActive: { backgroundColor: 'rgba(249,115,22,0.1)' },
+  dropdownItemText: { color: theme.text, fontSize: 14 },
+  dropdownItemTextActive: { color: theme.orange, fontWeight: '700' },
+  noEntregableSubmit: {
+    flex: 1,
+    height: 48,
+    borderRadius: radius.sm,
+    backgroundColor: '#dc2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noEntregableSubmitText: { color: '#fff', fontWeight: 'bold' },
   novedadInput: {
     height: 100,
     borderWidth: 1,
