@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ProductCombobox } from '@/components/ui/ProductCombobox'
 import { getLocalDateInputValue } from '@/lib/utils'
 import type { User, DeliveryPoint, PaginatedResponse } from '@/lib/types'
 
@@ -184,10 +185,10 @@ export default function NuevaRutaPage() {
                   </div>
                   {(watch(`stops.${stopIdx}.requirements`) ?? []).map((_, reqIdx) => (
                     <div key={reqIdx} className="flex gap-2 items-center">
-                      <Input
-                        placeholder="Producto (ej: Monserrate Negra)"
+                      <ProductCombobox
+                        value={watch(`stops.${stopIdx}.requirements.${reqIdx}.product`) ?? ''}
+                        onChange={v => setValue(`stops.${stopIdx}.requirements.${reqIdx}.product`, v)}
                         className="flex-1"
-                        {...register(`stops.${stopIdx}.requirements.${reqIdx}.product`)}
                       />
                       <Input
                         type="number"
