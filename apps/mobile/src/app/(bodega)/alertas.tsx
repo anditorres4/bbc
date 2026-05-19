@@ -18,15 +18,10 @@ const SEV_BORDER: Record<string, string> = {
 
 const SEV_ORDER: Record<string, number> = { CRITICAL: 0, WARNING: 1, INFO: 2 }
 
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const minutes = Math.floor(diff / 60_000)
-  const hours = Math.floor(diff / 3_600_000)
-  const days = Math.floor(diff / 86_400_000)
-  if (minutes < 1) return 'ahora'
-  if (minutes < 60) return `hace ${minutes} min`
-  if (hours < 24) return `hace ${hours} h`
-  return `hace ${days} d`
+function formatTs(ts: string) {
+  const d = new Date(ts)
+  return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) +
+    ' ' + d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function AlertasScreen() {
@@ -110,7 +105,7 @@ export default function AlertasScreen() {
           >
             <Text style={styles.alertMsg}>{item.message}</Text>
             <View style={styles.alertMeta}>
-              <Text style={styles.alertTime}>{timeAgo(item.createdAt)}</Text>
+              <Text style={styles.alertTime}>{formatTs(item.createdAt)}</Text>
               {!item.isRead && (
                 <View style={styles.unreadDot} />
               )}
