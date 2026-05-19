@@ -8,7 +8,7 @@ import { StatCard } from '@/components/StatCard'
 import { RouteKanbanCard } from '@/components/RouteKanbanCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatRelative } from '@/lib/utils'
-import type { PaginatedResponse, Barrel, Route, Alert } from '@/lib/types'
+import type { PaginatedResponse, Barrel, Route, Alert, ReporteResponse } from '@/lib/types'
 
 function useBarrelStats() {
   return useQuery({
@@ -32,6 +32,14 @@ function useActiveRoutes() {
   })
 }
 
+function useReportesSummary() {
+  return useQuery({
+    queryKey: ['reportes', 'summary'],
+    queryFn: () => api.get<ReporteResponse>('/api/reportes'),
+    select: (data) => data.summary,
+  })
+}
+
 function useRecentAlerts() {
   return useQuery({
     queryKey: ['alerts', 'recent'],
@@ -49,6 +57,7 @@ export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading } = useBarrelStats()
   const { data: routes, isLoading: routesLoading } = useActiveRoutes()
   const { data: alerts } = useRecentAlerts()
+  const { data: reporteSummary } = useReportesSummary()
 
   return (
     <div className="space-y-6">
@@ -69,7 +78,14 @@ export default function DashboardPage() {
         {/* Active routes */}
         <div className="xl:col-span-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-stone-700">Rutas activas hoy</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-stone-700">Rutas activas hoy</h2>
+              {reporteSummary !== undefined && (
+                <p className="text-xs text-stone-400 mt-0.5">
+                  {reporteSummary.totalDeliveriesHoy} {reporteSummary.totalDeliveriesHoy === 1 ? 'entrega' : 'entregas'} hoy
+                </p>
+              )}
+            </div>
             <Link href="/rutas" className="text-xs text-amber-600 hover:underline">Ver todas →</Link>
           </div>
           {routesLoading ? (

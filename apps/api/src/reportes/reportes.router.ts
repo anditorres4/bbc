@@ -91,10 +91,18 @@ router.get(
       }))
 
       // 5. Summary counters
-      const [totalBarrels, activeRoutes, unreadAlerts] = await Promise.all([
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const todayEnd = new Date()
+      todayEnd.setHours(23, 59, 59, 999)
+
+      const [totalBarrels, activeRoutes, unreadAlerts, totalDeliveriesHoy] = await Promise.all([
         prisma.barrel.count(),
         prisma.route.count({ where: { status: { in: [RouteStatus.EN_CURSO, RouteStatus.CON_NOVEDAD] } } }),
         prisma.alert.count({ where: { isRead: false } }),
+        prisma.routeStopBarrel.count({
+          where: { status: 'ENTREGADO', deliveredAt: { gte: todayStart, lte: todayEnd } },
+        }),
       ])
 
       // 6. Barrels by product (top 10)
@@ -131,6 +139,7 @@ router.get(
           activeRoutes,
           unreadAlerts,
           sinMovimiento60d,
+          totalDeliveriesHoy,
         },
         dateRange: {
           from: cutoff.toISOString().split('T')[0],
