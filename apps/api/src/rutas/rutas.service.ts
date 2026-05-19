@@ -12,6 +12,26 @@ type StopInput = {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Auto-cierra la ruta si todas sus paradas están en COMPLETADA o CON_NOVEDAD.
+ * Si hay al menos una parada en PENDIENTE o CANCELADA la ruta no se cierra.
+ */
+async function checkAndCloseRoute(routeId: string) {
+  const allStops = await prisma.routeStop.findMany({
+    where: { routeId },
+    select: { status: true },
+  })
+  const allDone = allStops.length > 0 && allStops.every(
+    s => s.status === StopStatus.COMPLETADA || s.status === StopStatus.CON_NOVEDAD
+  )
+  if (allDone) {
+    await prisma.route.update({
+      where: { id: routeId },
+      data: { status: RouteStatus.COMPLETADA, arrivedAt: new Date() },
+    })
+  }
+}
+
 async function findRouteOrFail(id: string) {
   const route = await prisma.route.findUnique({
     where: { id },
@@ -337,6 +357,9 @@ export async function entregarStop(
     }
   }
 
+  // Auto-cierre de ruta si todas las paradas están terminadas
+  await checkAndCloseRoute(routeId)
+
   return getStop(routeId, stopId)
 }
 
@@ -408,6 +431,10 @@ export async function completarStop(
     where: { id: stopId },
     data: { status: StopStatus.COMPLETADA, lat, lng, deliveredAt: new Date() },
   })
+
+  // Auto-cierre de ruta si todas las paradas están terminadas
+  await checkAndCloseRoute(routeId)
+
   return getStop(routeId, stopId)
 }
 
@@ -463,6 +490,53 @@ export async function novedadStop(
   alertStream.broadcast(
     'novedad',
     { alertId: alert.id, routeId, stopId, description, novedadType, severity: 'WARNING' },
+    ['ADMIN', 'SUPERVISOR']
+  )
+
+  // Auto-cierre de ruta si todas las paradas están terminadas (incluyendo la recién marcada CON_NOVEDAD)
+  await checkAndCloseRoute(routeId)
+
+  return alert
+}
+
+export async function markStopUndeliverable(
+  routeId: string,
+  stopId: string,
+  _userId: string,
+  novedadType?: NovedadType,
+  comentario?: string
+) {
+  const route = await findRouteOrFail(routeId)
+  if (route.status !== RouteStatus.EN_CURSO && route.status !== RouteStatus.CON_NOVEDAD) {
+    throw new AppError('La ruta no está en curso', 409, 'ROUTE_NOT_EN_CURSO')
+  }
+  const stop = route.stops.find(s => s.id === stopId)
+  if (!stop) throw new AppError('Parada no encontrada', 404, 'STOP_NOT_FOUND')
+
+  const parts: string[] = []
+  if (novedadType) parts.push(`[${novedadType}]`)
+  parts.push('No entregable')
+  if (comentario?.trim()) parts.push(`— ${comentario.trim()}`)
+  const message = parts.join(' ')
+
+  const [alert] = await Promise.all([
+    prisma.alert.create({
+      data: {
+        type: 'NOVEDAD_EN_RUTA',
+        message,
+        severity: 'WARNING',
+        routeId,
+        routeStopId: stopId,
+        targetRoles: ['ADMIN', 'SUPERVISOR'],
+      },
+    }),
+    prisma.routeStop.update({ where: { id: stopId }, data: { status: StopStatus.CON_NOVEDAD } }),
+    prisma.route.update({ where: { id: routeId }, data: { status: RouteStatus.CON_NOVEDAD } }),
+  ])
+
+  alertStream.broadcast(
+    'novedad',
+    { alertId: alert.id, routeId, stopId, novedadType, severity: 'WARNING', undeliverable: true },
     ['ADMIN', 'SUPERVISOR']
   )
 
