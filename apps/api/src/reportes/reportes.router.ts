@@ -90,11 +90,12 @@ router.get(
         count: r._count._all,
       }))
 
-      // 5. Summary counters
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
-      const todayEnd = new Date()
-      todayEnd.setHours(23, 59, 59, 999)
+      // 5. Summary counters — use Bogotá (UTC-5) calendar day regardless of server TZ
+      const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1000
+      const nowBogota = new Date(Date.now() - BOGOTA_OFFSET_MS)
+      const bogotaDay = nowBogota.toISOString().split('T')[0]!
+      const todayStart = new Date(new Date(`${bogotaDay}T00:00:00.000Z`).getTime() + BOGOTA_OFFSET_MS)
+      const todayEnd   = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000 - 1)
 
       const [totalBarrels, activeRoutes, unreadAlerts, totalDeliveriesHoy] = await Promise.all([
         prisma.barrel.count(),
