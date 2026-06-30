@@ -177,14 +177,36 @@ async function main() {
   const b019 = await mkBarrel({ qrCode: 'BBC-019', status: BarrelStatus.EN_BODEGA,        capacity: 50, manufactureDate: new Date('2015-06-01'), product: 'Monserrate Negra' })
   const b020 = await mkBarrel({ qrCode: 'BBC-020', status: BarrelStatus.BAJA,             capacity: 50, manufactureDate: new Date('2015-01-01'), product: 'Monserrate Negra', notes: 'Vida útil completada — Mayo 2025' })
 
-  const allBarrels = [b001, b002, b003, b004, b005, b006, b007, b008, b009, b010, b011, b012, b013, b014, b015, b016, b017, b018, b019, b020]
+  // ── Additional barrels BBC-021..BBC-100 (EN_BODEGA stock) ────────────────
+  const EXTRA_PRODUCTS = [
+    { product: 'Monserrate Negra', capacity: 50 },
+    { product: 'Monserrate Roja',  capacity: 30 },
+    { product: 'Monserrate Rubia', capacity: 20 },
+    { product: 'Monserrate IPA',   capacity: 50 },
+  ]
+
+  const extraBarrels = []
+  for (let n = 21; n <= 100; n++) {
+    const p = EXTRA_PRODUCTS[(n - 21) % EXTRA_PRODUCTS.length]
+    const yearOffset = ((n - 21) % 5)
+    const b = await mkBarrel({
+      qrCode: `BBC-${String(n).padStart(3, '0')}`,
+      status: BarrelStatus.EN_BODEGA,
+      capacity: p.capacity,
+      manufactureDate: new Date(`${2019 + yearOffset}-${String((n % 12) + 1).padStart(2,'0')}-01`),
+      product: p.product,
+    })
+    extraBarrels.push(b)
+  }
+
+  const allBarrels = [b001, b002, b003, b004, b005, b006, b007, b008, b009, b010, b011, b012, b013, b014, b015, b016, b017, b018, b019, b020, ...extraBarrels]
   const ids = allBarrels.map(b => b.id)
 
   for (let i = 0; i < ids.length; i++) {
     const expected = `BBC-${String(i + 1).padStart(3, '0')}`
     if (ids[i] !== expected) throw new Error(`ID mismatch: expected ${expected}, got ${ids[i]}. Reset the sequence and re-run.`)
   }
-  console.log(`Barrels created: ${ids.join(', ')}`)
+  console.log(`Barrels created: BBC-001..BBC-100 (${ids.length} total)`)
 
   // ── Barrel events (hoja de vida) ───────────────────────────────────────────
 
@@ -222,11 +244,12 @@ async function main() {
   // ── Routes ────────────────────────────────────────────────────────────────
 
   const routeDate = new Date(today) // midnight today — date field only
+  const dateLabel = today.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
 
   // Route 1: Ruta Norte — Pedro Trans — already departed (EN_CURSO)
   const route1 = await prisma.route.create({
     data: {
-      name: 'Ruta Norte — 16 May',
+      name: `Ruta Norte — ${dateLabel}`,
       date: routeDate,
       status: RouteStatus.EN_CURSO,
       transportistId: trans1.id,
@@ -278,7 +301,7 @@ async function main() {
   // Route 2: Ruta Sur — Luis Trans — already departed (EN_CURSO)
   const route2 = await prisma.route.create({
     data: {
-      name: 'Ruta Sur — 16 May',
+      name: `Ruta Sur — ${dateLabel}`,
       date: routeDate,
       status: RouteStatus.EN_CURSO,
       transportistId: trans2.id,
@@ -479,8 +502,12 @@ async function main() {
     BBC-016  EN_MANTENIMIENTO
     BBC-020  BAJA
 
+  Stock en bodega:
+    BBC-009, BBC-010, BBC-015, BBC-017..BBC-019  (demo especiales)
+    BBC-021..BBC-100  (80 barriles adicionales — 4 productos variados)
+
   Etiquetas QR (admin web):
-    http://localhost:3000/barriles/etiquetas?ids=${ids.slice(0, 15).join(',')}
+    http://localhost:3000/barriles/etiquetas?ids=${ids.slice(0, 20).join(',')}
 `)
 }
 
