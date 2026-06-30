@@ -179,10 +179,14 @@ async function main() {
 
   // ── Additional barrels BBC-021..BBC-100 (EN_BODEGA stock) ────────────────
   const EXTRA_PRODUCTS = [
-    { product: 'Monserrate Negra', capacity: 50 },
-    { product: 'Monserrate Roja',  capacity: 30 },
-    { product: 'Monserrate Rubia', capacity: 20 },
-    { product: 'Monserrate IPA',   capacity: 50 },
+    { product: 'Monserrate Negra',  capacity: 50 },
+    { product: 'Monserrate Roja',   capacity: 30 },
+    { product: 'Chapinero Porter',  capacity: 30 },
+    { product: 'Palo Santo',        capacity: 50 },
+    { product: 'BBC IPA',           capacity: 50 },
+    { product: 'Cajicá Honey',      capacity: 20 },
+    { product: 'Taberna Pale Ale',  capacity: 30 },
+    { product: 'Andina Stout',      capacity: 50 },
   ]
 
   const extraBarrels = []
