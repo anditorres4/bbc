@@ -25,12 +25,20 @@ jest.mock('../db/client', () => ({
     },
     routeStop: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
     },
     routeStopBarrel: {
       updateMany: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      create: jest.fn(),
+    },
+    routeBarrel: {
+      findMany: jest.fn(),
+      createMany: jest.fn(),
     },
     alert: {
       create: jest.fn(),
@@ -50,6 +58,9 @@ jest.mock('../db/client', () => ({
     deliveryPoint: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn().mockResolvedValue({ id: 'audit-001' }),
     },
   },
 }))
@@ -107,6 +118,7 @@ function makeRoute(status: string) {
     arrivedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    transportist: { id: 'trans-001', name: 'Pedro Rodríguez' },
     stops: [
       {
         id: STOP_ID,
@@ -121,7 +133,9 @@ function makeRoute(status: string) {
         lat: null,
         lng: null,
         deliveryPoint: { id: POINT_ID, name: 'Bar El Barril Feliz' },
-        barrels: [{ id: 'rsb-001', routeStopId: STOP_ID, barrelId: BARREL_ID, product: 'Lager', status: 'ASIGNADO' }],
+        requirements: [{ id: 'req-001', routeStopId: STOP_ID, product: 'Lager', quantity: 1 }],
+        barrels: [],
+        alerts: [],
       },
     ],
   }
@@ -140,6 +154,7 @@ describe('Flujo crítico de barril', () => {
     ;(prisma.routeStopBarrel.findFirst as jest.Mock).mockResolvedValue(null)
     ;(prisma.routeStopBarrel.findMany as jest.Mock).mockResolvedValue([])
     ;(prisma.alert.create as jest.Mock).mockResolvedValue({ id: 'alert-001', type: 'NOVEDAD_EN_RUTA' })
+    ;(prisma.auditLog.create as jest.Mock).mockResolvedValue({ id: 'audit-001' })
   })
 
   // ── Step 1: Scan crea el barril (no existe aún) ───────────────────────────
@@ -178,11 +193,9 @@ describe('Flujo crítico de barril', () => {
     expect(prisma.barrel.create).not.toHaveBeenCalled()
   })
 
-  // ── Step 3: Crear ruta → barril pasa a EN_ALISTAMIENTO ───────────────────
-  it('3. POST /api/rutas — crea ruta y transiciona barriles a EN_ALISTAMIENTO', async () => {
-    ;(prisma.barrel.findMany as jest.Mock).mockResolvedValueOnce([makeBarrel('EN_BODEGA')])
+  // ── Step 3: Crear ruta con requerimientos por parada (no toca barriles) ──
+  it('3. POST /api/rutas — crea ruta con requerimientos por parada', async () => {
     ;(prisma.route.create as jest.Mock).mockResolvedValueOnce(makeRoute('PLANIFICADA'))
-    ;(prisma.barrel.update as jest.Mock).mockResolvedValueOnce(makeBarrel('EN_ALISTAMIENTO'))
 
     const res = await request(app)
       .post('/api/rutas')
@@ -191,29 +204,43 @@ describe('Flujo crítico de barril', () => {
         name: 'Ruta Test',
         date: new Date().toISOString(),
         transportistId: 'trans-001',
-        stops: [{ deliveryPointId: POINT_ID, position: 1, barrels: [{ barrelId: BARREL_ID, product: 'Lager' }] }],
+        stops: [{ deliveryPointId: POINT_ID, position: 1, requirements: [{ product: 'Lager', quantity: 1 }] }],
       })
 
     expect(res.status).toBe(201)
-    expect(prisma.barrel.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'EN_ALISTAMIENTO' } })
-    )
-    expect(prisma.barrelEvent.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ type: 'ALISTAMIENTO', toStatus: 'EN_ALISTAMIENTO' }) })
+    expect(prisma.route.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: 'Ruta Test',
+          stops: expect.objectContaining({
+            create: [
+              expect.objectContaining({
+                deliveryPointId: POINT_ID,
+                position: 1,
+                barrelsAssigned: 1,
+                requirements: { create: [{ product: 'Lager', quantity: 1 }] },
+              }),
+            ],
+          }),
+        }),
+      })
     )
   })
 
   // ── Step 4: Iniciar ruta → barril pasa a EN_TRANSPORTE ───────────────────
   it('4. POST /api/rutas/:id/iniciar — transiciona barriles a EN_TRANSPORTE', async () => {
-    ;(prisma.route.findUnique as jest.Mock).mockResolvedValueOnce(makeRoute('PLANIFICADA'))
-    ;(prisma.barrel.findMany as jest.Mock).mockResolvedValueOnce([makeBarrel('EN_ALISTAMIENTO')])
+    ;(prisma.route.findUnique as jest.Mock)
+      .mockResolvedValueOnce(makeRoute('PLANIFICADA'))
+      .mockResolvedValueOnce(makeRoute('EN_CURSO'))
+    ;(prisma.barrel.findMany as jest.Mock).mockResolvedValueOnce([makeBarrel('EN_BODEGA', { product: 'Lager' })])
     ;(prisma.route.update as jest.Mock).mockResolvedValueOnce({ ...makeRoute('EN_CURSO'), departedAt: new Date() })
-    ;(prisma.barrel.update as jest.Mock).mockResolvedValueOnce(makeBarrel('EN_TRANSPORTE'))
-    ;(prisma.route.findUnique as jest.Mock).mockResolvedValueOnce(makeRoute('EN_CURSO'))
+    ;(prisma.routeBarrel.createMany as jest.Mock).mockResolvedValueOnce({ count: 1 })
+    ;(prisma.barrel.update as jest.Mock).mockResolvedValueOnce(makeBarrel('EN_TRANSPORTE', { product: 'Lager' }))
 
     const res = await request(app)
       .post(`/api/rutas/${ROUTE_ID}/iniciar`)
-      .set('Authorization', `Bearer ${transportistaToken}`)
+      .set('Authorization', `Bearer ${operarioToken}`)
+      .send({ barrelIds: [BARREL_ID] })
 
     expect(res.status).toBe(200)
     expect(prisma.barrel.update).toHaveBeenCalledWith(
@@ -227,12 +254,27 @@ describe('Flujo crítico de barril', () => {
   // ── Step 5: Entregar stop → barril pasa a ENTREGADO ──────────────────────
   it('5. POST /api/rutas/:id/stops/:stopId/entregar — transiciona a ENTREGADO', async () => {
     ;(prisma.route.findUnique as jest.Mock).mockResolvedValueOnce(makeRoute('EN_CURSO'))
-    ;(prisma.barrel.findMany as jest.Mock).mockResolvedValueOnce([makeBarrel('EN_TRANSPORTE')])
-    ;(prisma.barrel.update as jest.Mock).mockResolvedValueOnce(makeBarrel('ENTREGADO'))
-    ;(prisma.routeStop.update as jest.Mock).mockResolvedValueOnce({ id: STOP_ID, barrelsDelivered: 1, barrelsAssigned: 1 })
-    ;(prisma.routeStop.findUnique as jest.Mock)
-      .mockResolvedValueOnce({ id: STOP_ID, barrelsDelivered: 1, barrelsAssigned: 1 })
-      .mockResolvedValueOnce({ id: STOP_ID, status: 'COMPLETADA', barrels: [] })
+    ;(prisma.routeBarrel.findMany as jest.Mock).mockResolvedValueOnce([
+      { id: 'rb-001', routeId: ROUTE_ID, barrelId: BARREL_ID },
+    ])
+    ;(prisma.barrel.findMany as jest.Mock).mockResolvedValueOnce([makeBarrel('EN_TRANSPORTE', { product: 'Lager' })])
+    ;(prisma.routeStopBarrel.count as jest.Mock).mockResolvedValueOnce(0)
+    ;(prisma.barrel.update as jest.Mock).mockResolvedValueOnce(makeBarrel('ENTREGADO', { product: 'Lager' }))
+    ;(prisma.routeStop.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: STOP_ID,
+      barrelsDelivered: 1,
+      requirements: [{ product: 'Lager', quantity: 1 }],
+    })
+    ;(prisma.routeStop.findMany as jest.Mock).mockResolvedValueOnce([{ status: 'COMPLETADA' }])
+    ;(prisma.routeStop.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: STOP_ID,
+      barrelsAssigned: 1,
+      barrelsDelivered: 1,
+      barrelsPickedUp: 0,
+      requirements: [],
+      barrels: [],
+      deliveryPoint: {},
+    })
 
     const res = await request(app)
       .post(`/api/rutas/${ROUTE_ID}/stops/${STOP_ID}/entregar`)
@@ -251,12 +293,18 @@ describe('Flujo crítico de barril', () => {
   // ── Step 6: Recoger vacío → barril pasa a EN_RECOGIDA ────────────────────
   it('6. POST /api/rutas/:id/stops/:stopId/recoger — transiciona a EN_RECOGIDA', async () => {
     ;(prisma.route.findUnique as jest.Mock).mockResolvedValueOnce(makeRoute('EN_CURSO'))
-    ;(prisma.barrel.findMany as jest.Mock).mockResolvedValueOnce([makeBarrel('ENTREGADO')])
-    ;(prisma.barrel.update as jest.Mock).mockResolvedValueOnce(makeBarrel('EN_RECOGIDA'))
-    ;(prisma.routeStop.update as jest.Mock)
-      .mockResolvedValueOnce({ id: STOP_ID })
-      .mockResolvedValueOnce({ id: STOP_ID, barrels: [] })
-    ;(prisma.routeStop.findUnique as jest.Mock).mockResolvedValueOnce({ id: STOP_ID, barrels: [] })
+    ;(prisma.barrel.findMany as jest.Mock).mockResolvedValueOnce([makeBarrel('ENTREGADO', { product: 'Lager' })])
+    ;(prisma.barrel.update as jest.Mock).mockResolvedValueOnce(makeBarrel('EN_RECOGIDA', { product: 'Lager' }))
+    ;(prisma.routeStopBarrel.updateMany as jest.Mock).mockResolvedValueOnce({ count: 1 })
+    ;(prisma.routeStop.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: STOP_ID,
+      barrelsAssigned: 1,
+      barrelsDelivered: 1,
+      barrelsPickedUp: 1,
+      requirements: [],
+      barrels: [],
+      deliveryPoint: {},
+    })
 
     const res = await request(app)
       .post(`/api/rutas/${ROUTE_ID}/stops/${STOP_ID}/recoger`)
@@ -352,6 +400,7 @@ describe('Máquina de estados — transiciones inválidas', () => {
     ;(prisma.routeStopBarrel.findMany as jest.Mock).mockResolvedValue([])
     ;(prisma.route.findUnique as jest.Mock).mockResolvedValue(null)
     ;(prisma.alert.create as jest.Mock).mockResolvedValue({ id: 'alert-001' })
+    ;(prisma.auditLog.create as jest.Mock).mockResolvedValue({ id: 'audit-001' })
   })
 
   it('permite recibir un barril EN_BODEGA (irregular) — advierte en vez de bloquear', async () => {
@@ -419,6 +468,7 @@ describe('Mantenimiento', () => {
     ;(prisma.barrel.update as jest.Mock).mockResolvedValue(makeBarrel('EN_BODEGA'))
     ;(prisma.routeStopBarrel.findFirst as jest.Mock).mockResolvedValue(null)
     ;(prisma.alert.create as jest.Mock).mockResolvedValue({ id: 'alert-001' })
+    ;(prisma.auditLog.create as jest.Mock).mockResolvedValue({ id: 'audit-001' })
   })
 
   it('POST /mantenimiento — EN_BODEGA → EN_MANTENIMIENTO', async () => {
