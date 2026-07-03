@@ -130,7 +130,9 @@ export default function ProductosPage() {
               <Input
                 id="defaultCapacity"
                 type="number"
-                {...register('defaultCapacity', { valueAsNumber: true })}
+                {...register('defaultCapacity', {
+                  setValueAs: v => (v === '' ? undefined : Number(v)),
+                })}
               />
             </div>
             {error && <p className="text-xs text-red-500">{error}</p>}
