@@ -20,6 +20,7 @@ export default function ProductosPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [toggleError, setToggleError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const { register, handleSubmit, reset } = useForm<FormValues>()
@@ -61,8 +62,14 @@ export default function ProductosPage() {
   }
 
   async function toggleActive(product: Product) {
-    await api.patch(`/api/productos/${product.id}`, { isActive: !product.isActive })
-    qc.invalidateQueries({ queryKey: ['productos'] })
+    setToggleError(null)
+    try {
+      await api.patch(`/api/productos/${product.id}`, { isActive: !product.isActive })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    } catch (err: unknown) {
+      const e = err as { message?: string }
+      setToggleError(e?.message ?? 'Error al cambiar el estado del producto')
+    }
   }
 
   return (
@@ -74,6 +81,8 @@ export default function ProductosPage() {
           Nuevo Producto
         </Button>
       </div>
+
+      {toggleError && <p className="text-xs text-red-500">{toggleError}</p>}
 
       <DataTable<Product & Record<string, unknown>>
         loading={isLoading}
