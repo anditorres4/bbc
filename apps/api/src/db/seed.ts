@@ -97,6 +97,18 @@ async function main() {
     },
   })
 
+  const produccion1 = await prisma.user.upsert({
+    where: { email: 'produccion1@bbc.co' },
+    update: {},
+    create: {
+      email: 'produccion1@bbc.co',
+      passwordHash: hash,
+      name: 'Sofía Ramírez',
+      phone: '+57 300 111 0008',
+      role: Role.PRODUCCION,
+    },
+  })
+
   console.log('Users created:')
   console.log(`  [ADMIN]          ${admin.email}`)
   console.log(`  [SUPERVISOR]     ${supervisor.email}`)
@@ -105,6 +117,26 @@ async function main() {
   console.log(`  [TRANSPORTISTA]  ${trans1.email}`)
   console.log(`  [TRANSPORTISTA]  ${trans2.email}`)
   console.log(`  [TRANSPORTISTA]  ${trans3.email}`)
+  console.log(`  [PRODUCCION]     ${produccion1.email}`)
+
+  // ── Productos ─────────────────────────────────────────────────────────────────
+
+  const productCatalog = [
+    { name: 'Monserrate Roja', defaultCapacity: 30 },
+    { name: 'Monserrate Negra', defaultCapacity: 50 },
+    { name: 'Chapinero Porter', defaultCapacity: 30 },
+    { name: 'Palo Santo', defaultCapacity: 50 },
+    { name: 'BBC IPA', defaultCapacity: 50 },
+    { name: 'Cajicá Honey', defaultCapacity: 20 },
+    { name: 'Taberna Pale Ale', defaultCapacity: 30 },
+    { name: 'Andina Stout', defaultCapacity: 50 },
+  ]
+
+  for (const p of productCatalog) {
+    await prisma.product.upsert({ where: { name: p.name }, update: {}, create: p })
+  }
+
+  console.log(`\nProducts created: ${productCatalog.length}`)
 
   // ── Puntos de entrega ────────────────────────────────────────────────────────
   // Los barriles NO se crean en el seed — se registran al escanear el QR físico
