@@ -94,7 +94,7 @@ export default function LlenadoPage() {
     try {
       const res = await api.post<{ data: ProductionBatch; warnings: string[] }>('/api/lotes', {
         productId,
-        code,
+        code: code.trim(),
         fillDate: new Date(fillDate).toISOString(),
         barrelIds: [...selected.keys()],
       })
@@ -102,7 +102,7 @@ export default function LlenadoPage() {
       qc.invalidateQueries({ queryKey: ['barriles', 'en-bodega'] })
       qc.invalidateQueries({ queryKey: ['lotes', 'mine'] })
       if (res.warnings.length > 0) {
-        showToast(res.warnings[0] as string)
+        showToast(res.warnings.join(' · '))
       } else {
         showToast(`Lote "${res.data.code}" confirmado — ${selected.size} barril(es)`)
       }
