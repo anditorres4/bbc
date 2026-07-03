@@ -17,7 +17,7 @@ router.post(
     try {
       const schema = z.object({
         productId: z.string().min(1),
-        code: z.string().min(1, 'El código de lote es requerido'),
+        code: z.string().min(1, 'El código de lote es requerido').transform(v => v.trim()),
         fillDate: z.coerce.date(),
         barrelIds: z.array(z.string().min(1)).min(1, 'Debe seleccionar al menos un barril'),
         notes: z.string().optional(),
@@ -36,7 +36,12 @@ router.post(
 // ── GET /api/lotes ──────────────────────────────────────────────────────────
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const schema = z.object({ mine: z.coerce.boolean().optional() })
+    const schema = z.object({
+      mine: z
+        .enum(['true', 'false'])
+        .optional()
+        .transform(v => (v === undefined ? undefined : v === 'true')),
+    })
     const parsed = schema.safeParse(req.query)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
 

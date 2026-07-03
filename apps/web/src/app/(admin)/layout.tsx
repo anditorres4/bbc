@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import { AdminSidebar } from '@/components/AdminSidebar'
+import { AdminSidebar, NAV_BY_ROLE } from '@/components/AdminSidebar'
 import { AdminHeader } from '@/components/AdminHeader'
 import { getAccessToken } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -71,12 +71,12 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     return 'BBC Barrel Track'
   })()
 
-  const PRODUCCION_ALLOWED_PREFIXES = ['/llenado', '/barriles']
   useEffect(() => {
     if (!user || user.role !== 'PRODUCCION') return
     if (typeof window === 'undefined') return
     const path = window.location.pathname
-    const allowed = PRODUCCION_ALLOWED_PREFIXES.some(prefix => path.startsWith(prefix))
+    const allowedPrefixes = NAV_BY_ROLE.PRODUCCION ?? []
+    const allowed = allowedPrefixes.some(prefix => path.startsWith(prefix))
     if (!allowed) router.replace('/llenado')
   }, [user, router])
 

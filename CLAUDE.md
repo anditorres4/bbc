@@ -9,7 +9,7 @@ Permite rastrear el ciclo de vida completo de cada barril mediante códigos QR g
 Bodega → Alistamiento → Transporte → Entrega (lleno) → Recogida (vacío) → Bodega
 ```
 
-- El **contenido** (sabor/producto) se asigna en el paso de **Alistamiento**
+- El **contenido** (sabor/producto) se asigna en el paso de **Llenado** (equipo de Producción), antes del Alistamiento
 - El barril se identifica por QR grabado físicamente en el activo (no cambia)
 - Los eventos de movimiento se registran escaneando el QR en cada etapa
 

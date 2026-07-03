@@ -25,7 +25,7 @@ const NAV = [
 ]
 
 // Rutas visibles para cada rol restringido. Los roles no listados aquí ven todo el NAV.
-const NAV_BY_ROLE: Partial<Record<Role, string[]>> = {
+export const NAV_BY_ROLE: Partial<Record<Role, string[]>> = {
   PRODUCCION: ['/llenado', '/barriles'],
 }
 

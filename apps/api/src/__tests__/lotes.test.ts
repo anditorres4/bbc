@@ -146,4 +146,13 @@ describe('GET /api/lotes', () => {
       expect.objectContaining({ where: { createdById: 'prod-001' } })
     )
   })
+
+  it('filtra por mine=false sin restringir por usuario', async () => {
+    ;(prisma.productionBatch.findMany as jest.Mock).mockResolvedValueOnce([])
+
+    const res = await request(app).get('/api/lotes?mine=false').set('Authorization', `Bearer ${produccionToken}`)
+
+    expect(res.status).toBe(200)
+    expect(prisma.productionBatch.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
+  })
 })
