@@ -21,7 +21,6 @@ function makeToken(role: string, id = 'user-001') {
   return jwt.sign({ sub: id, role }, JWT_SECRET, { expiresIn: '1h' })
 }
 const produccionToken = makeToken('PRODUCCION', 'prod-001')
-const operarioToken = makeToken('OPERARIO_BODEGA', 'op-001')
 
 const PRODUCT = { id: 'prod-001', name: 'BBC IPA', defaultCapacity: 50, isActive: true, createdAt: new Date() }
 
@@ -72,6 +71,7 @@ describe('POST /api/lotes', () => {
 
     expect(res.status).toBe(201)
     expect(res.body.warnings).toEqual([])
+    expect(prisma.$transaction).toHaveBeenCalled()
     expect(prisma.barrel.update).toHaveBeenCalledWith({
       where: { id: 'BBC-001' },
       data: { product: 'BBC IPA', currentBatchId: 'batch-001' },
@@ -93,6 +93,11 @@ describe('POST /api/lotes', () => {
 
     expect(res.status).toBe(201)
     expect(res.body.warnings[0]).toContain('fuera de bodega')
+    expect(prisma.$transaction).toHaveBeenCalled()
+    expect(prisma.barrel.update).toHaveBeenCalledWith({
+      where: { id: 'BBC-001' },
+      data: { product: 'BBC IPA', currentBatchId: 'batch-001' },
+    })
   })
 
   it('advierte pero permite un código de lote duplicado', async () => {
@@ -111,6 +116,11 @@ describe('POST /api/lotes', () => {
 
     expect(res.status).toBe(201)
     expect(res.body.warnings[0]).toContain('ya fue usado')
+    expect(prisma.$transaction).toHaveBeenCalled()
+    expect(prisma.barrel.update).toHaveBeenCalledWith({
+      where: { id: 'BBC-001' },
+      data: { product: 'BBC IPA', currentBatchId: 'batch-001' },
+    })
   })
 
   it('retorna 400 sin barriles seleccionados', async () => {
