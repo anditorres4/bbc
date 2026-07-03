@@ -12,7 +12,15 @@ async function createEvent(
   fromStatus: BarrelStatus | null,
   toStatus: BarrelStatus,
   userId: string,
-  extras: { routeId?: string; deliveryPointId?: string; lat?: number; lng?: number; notes?: string } = {}
+  extras: {
+    routeId?: string
+    deliveryPointId?: string
+    lat?: number
+    lng?: number
+    notes?: string
+    product?: string
+    batchId?: string
+  } = {}
 ) {
   return prisma.barrelEvent.create({
     data: { barrelId, type, fromStatus, toStatus, userId, ...extras },
@@ -163,7 +171,7 @@ export async function updateBarrel(
 
 // ── Alert helper (fire-and-forget) ────────────────────────────────────────────
 
-function fireIrregularAlert(message: string, barrelId?: string, routeId?: string): void {
+export function fireIrregularAlert(message: string, barrelId?: string, routeId?: string): void {
   prisma.alert
     .create({
       data: {
@@ -231,7 +239,25 @@ export async function darDeBaja(id: string, userId: string, notes?: string) {
 }
 
 export async function recibirBarril(id: string, userId: string, notes?: string) {
-  const { barrel: updated, warning } = await executeTransition(id, BarrelStatus.EN_BODEGA, userId, { notes })
+  const barrel = await findBarrelOrFail(id)
+  const { result, eventType } = validateTransition(barrel.status, BarrelStatus.EN_BODEGA)
+
+  const [updated] = await Promise.all([
+    prisma.barrel.update({
+      where: { id },
+      data: { status: BarrelStatus.EN_BODEGA, product: null, currentBatchId: null },
+    }),
+    createEvent(barrel.id, eventType, barrel.status, BarrelStatus.EN_BODEGA, userId, {
+      notes,
+      product: barrel.product ?? undefined,
+      batchId: barrel.currentBatchId ?? undefined,
+    }),
+  ])
+
+  if (result.irregular && result.warning) {
+    fireIrregularAlert(result.warning, barrel.id)
+  }
+  const warning = result.irregular ? result.warning : undefined
 
   // If this barrel was picked up as part of a route, auto-close the route when
   // all empties from that route have now been received at bodega.
@@ -250,7 +276,6 @@ export async function recibirBarril(id: string, userId: string, notes?: string) 
         include: { barrel: { select: { status: true } } },
       })
 
-      // All RECOGIDO_VACIO barrels must now be EN_BODEGA (barrel X was just updated in DB)
       const allReturned = allPickedUp.length > 0 &&
         allPickedUp.every(rsb => rsb.barrel.status === BarrelStatus.EN_BODEGA)
 
