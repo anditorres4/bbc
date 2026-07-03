@@ -3,27 +3,41 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Beer, LayoutDashboard, Package, Truck, Bell, Users, LogOut, BarChart2, Wrench, ShieldCheck, MapPin
+  Beer, LayoutDashboard, Package, Truck, Bell, Users, LogOut, BarChart2, Wrench, ShieldCheck, MapPin, Droplets, FlaskConical
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearAccessToken } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
+import type { Role } from '@/lib/types'
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/barriles', label: 'Barriles', icon: Package },
+  { href: '/llenado', label: 'Llenado', icon: Droplets },
   { href: '/rutas', label: 'Rutas', icon: Truck },
   { href: '/puntos-entrega', label: 'Puntos de Entrega', icon: MapPin },
   { href: '/alertas', label: 'Alertas', icon: Bell },
   { href: '/usuarios', label: 'Usuarios', icon: Users },
   { href: '/mantenimiento', label: 'Mantenimiento', icon: Wrench },
+  { href: '/productos', label: 'Productos', icon: FlaskConical },
   { href: '/reportes', label: 'Reportes', icon: BarChart2 },
   { href: '/auditoria', label: 'Auditoría', icon: ShieldCheck },
 ]
 
-export function AdminSidebar() {
+// Rutas visibles para cada rol restringido. Los roles no listados aquí ven todo el NAV.
+const NAV_BY_ROLE: Partial<Record<Role, string[]>> = {
+  PRODUCCION: ['/llenado', '/barriles'],
+}
+
+interface Props {
+  role?: Role
+}
+
+export function AdminSidebar({ role }: Props) {
   const pathname = usePathname()
   const router = useRouter()
+  const allowedHrefs = role ? NAV_BY_ROLE[role] : undefined
+  const visibleNav = allowedHrefs ? NAV.filter(item => allowedHrefs.includes(item.href)) : NAV
 
   function handleLogout() {
     clearAccessToken()
@@ -42,7 +56,7 @@ export function AdminSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {visibleNav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
             <Link

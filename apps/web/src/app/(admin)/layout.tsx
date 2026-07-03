@@ -66,8 +66,19 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     if (path.includes('/alertas')) return 'Alertas'
     if (path.includes('/usuarios')) return 'Usuarios'
     if (path.includes('/reportes')) return 'Reportes'
+    if (path.includes('/llenado')) return 'Llenado'
+    if (path.includes('/productos')) return 'Productos'
     return 'BBC Barrel Track'
   })()
+
+  const PRODUCCION_ALLOWED_PREFIXES = ['/llenado', '/barriles']
+  useEffect(() => {
+    if (!user || user.role !== 'PRODUCCION') return
+    if (typeof window === 'undefined') return
+    const path = window.location.pathname
+    const allowed = PRODUCCION_ALLOWED_PREFIXES.some(prefix => path.startsWith(prefix))
+    if (!allowed) router.replace('/llenado')
+  }, [user, router])
 
   if (isPending) {
     return (
@@ -79,7 +90,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <AdminSidebar />
+      <AdminSidebar role={user?.role} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <AdminHeader title={pageTitle} user={user ?? undefined} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
