@@ -62,6 +62,17 @@ describe('GET /api/productos', () => {
     expect(res.status).toBe(200)
     expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { isActive: true } }))
   })
+
+  it('filtra por isActive=false cuando se pide', async () => {
+    ;(prisma.product.findMany as jest.Mock).mockResolvedValueOnce([])
+
+    const res = await request(app)
+      .get('/api/productos?isActive=false')
+      .set('Authorization', `Bearer ${produccionToken}`)
+
+    expect(res.status).toBe(200)
+    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { isActive: false } }))
+  })
 })
 
 describe('POST /api/productos', () => {

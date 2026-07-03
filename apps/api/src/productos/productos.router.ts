@@ -11,7 +11,12 @@ const router: Router = Router()
 // ── GET /api/productos ──────────────────────────────────────────────────────
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const schema = z.object({ isActive: z.coerce.boolean().optional() })
+    const schema = z.object({
+      isActive: z
+        .enum(['true', 'false'])
+        .optional()
+        .transform(v => (v === undefined ? undefined : v === 'true')),
+    })
     const parsed = schema.safeParse(req.query)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message })
 
