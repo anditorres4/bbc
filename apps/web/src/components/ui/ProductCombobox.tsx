@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { BBC_PRODUCTS } from '@/lib/constants'
+import { api } from '@/lib/api'
+import type { Product } from '@/lib/types'
 
 interface Props {
   value: string
@@ -18,9 +20,15 @@ export function ProductCombobox({ value, onChange, placeholder = 'Seleccionar pr
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const filtered = BBC_PRODUCTS.filter(p =>
-    p.toLowerCase().includes(search.toLowerCase())
-  )
+  const { data: products = [] } = useQuery({
+    queryKey: ['productos', 'active'],
+    queryFn: () => api.get<{ data: Product[] }>('/api/productos?isActive=true').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const filtered = products
+    .map(p => p.name)
+    .filter(name => name.toLowerCase().includes(search.toLowerCase()))
 
   useEffect(() => {
     if (!open) return
