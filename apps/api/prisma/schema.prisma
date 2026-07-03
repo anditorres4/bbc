@@ -33,6 +33,7 @@ enum EventType {
   RETORNO_MANTENIMIENTO
   DISPOSICION_FINAL
   NOVEDAD
+  LLENADO
 }
 
 enum Role {
@@ -40,6 +41,7 @@ enum Role {
   SUPERVISOR
   OPERARIO_BODEGA
   TRANSPORTISTA
+  PRODUCCION
 }
 
 enum RouteStatus {
@@ -98,12 +100,13 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  createdBarrels Barrel[]        @relation("BarrelCreatedBy")
-  events         BarrelEvent[]
-  routes         Route[]         @relation("RouteTransportist")
-  alertsRead     Alert[]         @relation("AlertReadBy")
-  refreshTokens  RefreshToken[]
-  auditLogs      AuditLog[]
+  createdBarrels    Barrel[]           @relation("BarrelCreatedBy")
+  events            BarrelEvent[]
+  routes            Route[]            @relation("RouteTransportist")
+  alertsRead        Alert[]            @relation("AlertReadBy")
+  refreshTokens     RefreshToken[]
+  auditLogs         AuditLog[]
+  productionBatches ProductionBatch[]
 }
 
 // Tokens de refresco: se almacenan en DB para poder invalidarlos en logout
@@ -132,6 +135,7 @@ model Barrel {
   lastMaintenanceDate DateTime?
   maxLifeYears        Int          @default(10)
   product             String?
+  currentBatchId      String?
   notes               String?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -142,6 +146,7 @@ model Barrel {
   routeStopBarrels RouteStopBarrel[]
   routeBarrels     RouteBarrel[]
   alerts           Alert[]
+  currentBatch     ProductionBatch?  @relation("BarrelCurrentBatch", fields: [currentBatchId], references: [id])
 }
 
 // Hoja de vida del barril: NUNCA se borra ni modifica — solo INSERT
@@ -158,12 +163,15 @@ model BarrelEvent {
   lng             Float?
   notes           String?
   novedadType     NovedadType?
+  product         String?
+  batchId         String?
   timestamp       DateTime      @default(now())
 
-  barrel        Barrel         @relation(fields: [barrelId], references: [id])
-  user          User           @relation(fields: [userId], references: [id])
-  route         Route?         @relation(fields: [routeId], references: [id])
-  deliveryPoint DeliveryPoint? @relation(fields: [deliveryPointId], references: [id])
+  barrel        Barrel           @relation(fields: [barrelId], references: [id])
+  user          User             @relation(fields: [userId], references: [id])
+  route         Route?           @relation(fields: [routeId], references: [id])
+  deliveryPoint DeliveryPoint?   @relation(fields: [deliveryPointId], references: [id])
+  batch         ProductionBatch? @relation(fields: [batchId], references: [id])
 
   @@index([barrelId, timestamp])
   @@index([timestamp])
@@ -298,4 +306,30 @@ model AuditLog {
   @@index([userId])
   @@index([timestamp])
   @@index([entityType, entityId])
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  defaultCapacity Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  batches ProductionBatch[]
+}
+
+// "Lote" de envasado — un producto + código + fecha, aplicado a N barriles
+model ProductionBatch {
+  id          String   @id @default(cuid())
+  code        String
+  productId   String
+  fillDate    DateTime
+  notes       String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  product   Product       @relation(fields: [productId], references: [id])
+  createdBy User          @relation(fields: [createdById], references: [id])
+  barrels   Barrel[]      @relation("BarrelCurrentBatch")
+  events    BarrelEvent[]
 }
