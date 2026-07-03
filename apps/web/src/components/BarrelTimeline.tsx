@@ -18,6 +18,7 @@ const EVENT_ICON: Record<EventType, React.ReactNode> = {
   RETORNO_MANTENIMIENTO: <Wrench className="h-4 w-4" />,
   DISPOSICION_FINAL: <Ban className="h-4 w-4" />,
   NOVEDAD: <AlertTriangle className="h-4 w-4" />,
+  LLENADO: <Package className="h-4 w-4" />,
 }
 
 const EVENT_LABEL: Record<EventType, string> = {
@@ -32,6 +33,7 @@ const EVENT_LABEL: Record<EventType, string> = {
   RETORNO_MANTENIMIENTO: 'Retorno de mantenimiento',
   DISPOSICION_FINAL: 'Disposición final',
   NOVEDAD: 'Novedad reportada',
+  LLENADO: 'Llenado',
 }
 
 interface Props {

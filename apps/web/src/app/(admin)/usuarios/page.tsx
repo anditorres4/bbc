@@ -22,6 +22,7 @@ const ROLES: { value: Role; label: string }[] = [
   { value: 'SUPERVISOR', label: 'Supervisor' },
   { value: 'OPERARIO_BODEGA', label: 'Operario Bodega' },
   { value: 'TRANSPORTISTA', label: 'Transportista' },
+  { value: 'PRODUCCION', label: 'Producción' },
 ]
 
 const schema = z.object({
@@ -29,7 +30,7 @@ const schema = z.object({
   password: z.string().min(8, 'Mínimo 8 caracteres'),
   name: z.string().min(1, 'Requerido'),
   phone: z.string().optional(),
-  role: z.enum(['ADMIN', 'SUPERVISOR', 'OPERARIO_BODEGA', 'TRANSPORTISTA']),
+  role: z.enum(['ADMIN', 'SUPERVISOR', 'OPERARIO_BODEGA', 'TRANSPORTISTA', 'PRODUCCION']),
 })
 
 type FormData = z.infer<typeof schema>

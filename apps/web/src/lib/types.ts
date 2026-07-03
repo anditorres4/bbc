@@ -29,8 +29,9 @@ export type EventType =
   | 'RETORNO_MANTENIMIENTO'
   | 'DISPOSICION_FINAL'
   | 'NOVEDAD'
+  | 'LLENADO'
 
-export type Role = 'ADMIN' | 'SUPERVISOR' | 'OPERARIO_BODEGA' | 'TRANSPORTISTA'
+export type Role = 'ADMIN' | 'SUPERVISOR' | 'OPERARIO_BODEGA' | 'TRANSPORTISTA' | 'PRODUCCION'
 export type RouteStatus = 'PLANIFICADA' | 'EN_CURSO' | 'COMPLETADA' | 'CON_NOVEDAD' | 'CANCELADA'
 export type StopStatus = 'PENDIENTE' | 'COMPLETADA' | 'CON_NOVEDAD' | 'CANCELADA'
 export type AlertType =
@@ -57,6 +58,7 @@ export interface Barrel {
   qrCode: string
   status: BarrelStatus
   product: string | null
+  currentBatchId: string | null
   capacity: number
   manufactureDate: string
   lastMaintenanceDate: string | null
@@ -80,6 +82,8 @@ export interface BarrelEvent {
   lng: number | null
   notes: string | null
   novedadType: NovedadType | null
+  product: string | null
+  batchId: string | null
   timestamp: string
   user?: Pick<User, 'id' | 'name'>
 }
@@ -98,6 +102,27 @@ export interface DeliveryPoint {
   contactName: string | null
   isActive: boolean
   createdAt: string
+}
+
+export interface Product {
+  id: string
+  name: string
+  defaultCapacity: number | null
+  isActive: boolean
+  createdAt: string
+}
+
+export interface ProductionBatch {
+  id: string
+  code: string
+  productId: string
+  fillDate: string
+  notes: string | null
+  createdById: string
+  createdAt: string
+  product?: Pick<Product, 'id' | 'name'>
+  createdBy?: Pick<User, 'id' | 'name'>
+  barrels?: Pick<Barrel, 'id'>[]
 }
 
 export interface RouteStopRequirement {
