@@ -12,6 +12,7 @@ import { alertasRouter } from './alertas/alertas.router'
 import { reportesRouter } from './reportes/reportes.router'
 import { auditoriaRouter } from './auditoria/auditoria.router'
 import { productosRouter } from './productos/productos.router'
+import { lotesRouter } from './lotes/lotes.router'
 import { authLimiter, scanLimiter, mutationLimiter } from './middleware/rateLimiter'
 
 const app: Express = express()
@@ -90,5 +91,6 @@ app.use('/api/alertas', alertasRouter)
 app.use('/api/reportes', reportesRouter)
 app.use('/api/auditoria', auditoriaRouter)
 app.use('/api/productos', mutationLimiter, productosRouter)
+app.use('/api/lotes', mutationLimiter, lotesRouter)
 
 export { app }
